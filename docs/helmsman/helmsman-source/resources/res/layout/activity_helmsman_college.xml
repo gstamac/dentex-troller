@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:orientation="vertical"
+    android:id="@+id/activity_helmsman_college"
+    android:fitsSystemWindows="true"
+    android:clipToPadding="true"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+    <FrameLayout
+        android:background="@color/white"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:elevation="5dp">
+        <im.helmsman.helmsmanandroid.view.TitleBar
+            android:id="@+id/titleBar"
+            android:background="@color/title_red"
+            android:layout_width="match_parent"
+            android:layout_height="168px"
+            app:left_drawable="0x7f0701db"
+            app:textColor="@color/white"
+            app:title="@string/helmsman_college_title">
+            <ImageView
+                android:id="@+id/iv_helmsman_college_search"
+                android:padding="10px"
+                android:layout_width="63px"
+                android:layout_height="65px"
+                android:layout_marginRight="16dp"
+                android:src="0x7f070246"
+                android:scaleType="fitXY"
+                android:layout_alignParentRight="true"
+                android:layout_centerVertical="true"/>
+        </im.helmsman.helmsmanandroid.view.TitleBar>
+    </FrameLayout>
+    <include layout="@layout/include_empty_state"/>
+    <androidx.swiperefreshlayout.widget.SwipeRefreshLayout
+        android:id="@+id/swipe_helmsmancollege"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="56dp">
+        <ListView
+            android:id="@+id/lv_helmsman_college_list"
+            android:visibility="gone"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:divider="@null"/>
+    </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
+</FrameLayout>

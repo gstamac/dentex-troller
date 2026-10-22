@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:orientation="vertical"
+    android:id="@+id/activity_comment_content"
+    android:fitsSystemWindows="true"
+    android:clipToPadding="true"
+    android:descendantFocusability="blocksDescendants"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+    <FrameLayout
+        android:background="@color/white"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:elevation="5dp">
+        <im.helmsman.helmsmanandroid.view.TitleBar
+            android:id="@+id/titleBar"
+            android:background="@color/title_red"
+            android:layout_width="match_parent"
+            android:layout_height="168px"
+            app:left_drawable="0x7f0701db"
+            app:textColor="@color/white"
+            app:title="@string/comment_title"/>
+    </FrameLayout>
+    <com.chanven.lib.cptr.PtrClassicFrameLayout
+        android:id="@+id/pcfl_refresh"
+        android:layout_width="match_parent"
+        android:layout_height="0px"
+        android:layout_weight="1">
+        <ListView
+            android:id="@+id/lv_comment_content"
+            android:focusable="false"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"/>
+    </com.chanven.lib.cptr.PtrClassicFrameLayout>
+    <FrameLayout
+        android:background="#80a1a1a1"
+        android:padding="2px"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content">
+        <include layout="@layout/include_bottom_comment_bar"/>
+    </FrameLayout>
+</LinearLayout>

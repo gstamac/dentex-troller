@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    style="@style/view_request_agent_row">
+    <RelativeLayout style="@style/view_request_user_info_container">
+        <TextView
+            android:id="@+id/view_request_agent_comment_date"
+            style="@style/view_request_agent_date_textview"/>
+        <LinearLayout
+            android:orientation="horizontal"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginRight="@dimen/view_horizontal_margin"
+            android:layout_toLeftOf="@+id/view_request_agent_comment_date"
+            android:layout_alignParentLeft="true">
+            <ImageView
+                android:id="@+id/view_request_agent_avatar_imageview"
+                android:contentDescription="@string/view_request_agent_avatar_imageview_alt"
+                style="@style/view_request_agent_avatar_imageview"/>
+            <TextView
+                android:id="@+id/view_request_agent_name_textview"
+                style="@style/view_request_agent_name_textview"/>
+        </LinearLayout>
+    </RelativeLayout>
+    <LinearLayout
+        android:orientation="vertical"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        style="@style/view_request_agent_response_container">
+        <TextView
+            android:id="@+id/view_request_agent_response_textview"
+            style="@style/view_request_agent_response_textview"/>
+    </LinearLayout>
+    <LinearLayout
+        android:orientation="vertical"
+        android:id="@+id/view_request_agent_response_attachment_container"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"/>
+</LinearLayout>

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <drawable name="articles_list_retry_button_background">@android:drawable/btn_default</drawable>
+    <drawable name="categories_list_retry_button_background">@android:drawable/btn_default</drawable>
+    <drawable name="notification_template_icon_bg">#3333b5e5</drawable>
+    <drawable name="notification_template_icon_low_bg">#0cffffff</drawable>
+    <drawable name="request_list_retry_button_background">@android:drawable/btn_default</drawable>
+    <drawable name="sections_list_retry_button_background">@android:drawable/btn_default</drawable>
+</resources>

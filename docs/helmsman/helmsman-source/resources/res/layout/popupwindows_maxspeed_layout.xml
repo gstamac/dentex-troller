@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.cardview.widget.CardView xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="133dp"
+    android:layout_height="133dp"
+    app:cardBackgroundColor="#b2000000"
+    app:cardCornerRadius="10dp">
+    <RelativeLayout
+        android:orientation="vertical"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent">
+        <ImageView
+            android:layout_width="47dp"
+            android:layout_height="87dp"
+            android:layout_marginRight="25px"
+            android:src="0x7f070244"
+            android:scaleType="fitXY"
+            android:layout_alignParentRight="true"
+            android:layout_centerVertical="true"/>
+        <com.akexorcist.roundcornerprogressbar.RoundCornerProgressBar
+            android:id="@+id/rcpb_progress"
+            android:layout_width="87dp"
+            android:layout_height="39dp"
+            android:layout_marginLeft="-3dp"
+            android:layout_centerVertical="true"
+            android:rotation="-90"
+            app:rcBackgroundColor="@android:color/black"
+            app:rcBackgroundPadding="1dp"
+            app:rcMax="100"
+            app:rcProgress="0"
+            app:rcProgressColor="#7ed321"
+            app:rcRadius="5dp"
+            app:rcReverse="false"
+            app:rcSecondaryProgress="0"
+            app:rcSecondaryProgressColor="#7ed321"/>
+    </RelativeLayout>
+</androidx.cardview.widget.CardView>

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_gravity="center"
+    style="@style/attachment_container">
+    <FrameLayout
+        android:padding="@dimen/attachment_container_image_margin"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content">
+        <ImageView
+            android:id="@+id/attachment_image"
+            style="@style/attachment_container_image"/>
+        <ProgressBar
+            android:id="@+id/attachment_progress"
+            style="@style/attachment_container_progress"/>
+    </FrameLayout>
+    <Button
+        android:id="@+id/attachment_delete"
+        style="@style/attachment_container_delete_btn"/>
+</FrameLayout>

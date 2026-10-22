@@ -1,0 +1,555 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    android:versionCode="124"
+    android:versionName="1.2.44"
+    android:compileSdkVersion="34"
+    android:compileSdkVersionCodename="14"
+    android:requiredSplitTypes="base__abi,base__density"
+    android:splitTypes=""
+    package="im.helmsman.helmsmanandroid"
+    platformBuildVersionCode="34"
+    platformBuildVersionName="14">
+    <uses-sdk
+        android:minSdkVersion="26"
+        android:targetSdkVersion="34"/>
+    <uses-feature
+        android:glEsVersion="0x20000"
+        android:required="true"/>
+    <permission
+        android:name="com.jay.example.mymap.permission.MAPS_RECEIVE"
+        android:protectionLevel="signature"/>
+    <permission
+        android:name="im.helmsman.helmsmanandroid.permission.JPUSH_MESSAGE"
+        android:protectionLevel="signature"/>
+    <uses-permission android:name="im.helmsman.helmsmanandroid.permission.JPUSH_MESSAGE"/>
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE"/>
+    <uses-permission
+        android:name="android.permission.BLUETOOTH"
+        android:maxSdkVersion="30"/>
+    <uses-permission
+        android:name="android.permission.BLUETOOTH_ADMIN"
+        android:maxSdkVersion="30"/>
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT"/>
+    <uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE"/>
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN"/>
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
+    <uses-permission android:name="android.permission.CHANGE_WIFI_STATE"/>
+    <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE"/>
+    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE"/>
+    <uses-permission android:name="android.permission.GET_TASKS"/>
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <uses-permission android:name="android.permission.MOUNT_UNMOUNT_FILESYSTEMS"/>
+    <uses-permission android:name="com.android.launcher.permission.READ_SETTINGS"/>
+    <uses-permission android:name="android.permission.READ_PHONE_STATE"/>
+    <uses-permission android:name="android.permission.RECEIVE_USER_PRESENT"/>
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
+    <uses-permission android:name="android.permission.VIBRATE"/>
+    <uses-permission android:name="android.permission.WAKE_LOCK"/>
+    <uses-permission android:name="android.permission.WRITE_SETTINGS"/>
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>
+    <uses-permission android:name="android.permission.CAMERA"/>
+    <uses-feature android:name="android.hardware.camera"/>
+    <uses-feature android:name="android.hardware.camera.autofocus"/>
+    <queries>
+        <package android:name="com.google.android.apps.maps"/>
+    </queries>
+    <permission
+        android:name="im.helmsman.helmsmanandroid.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
+        android:protectionLevel="signature"/>
+    <uses-permission android:name="im.helmsman.helmsmanandroid.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"/>
+    <application
+        android:theme="@style/AppBaseTheme"
+        android:label="@string/app_name"
+        android:icon="@mipmap/ic_launcher"
+        android:name="im.helmsman.helmsmanandroid.MyApplication"
+        android:exported="true"
+        android:screenOrientation="portrait"
+        android:allowBackup="true"
+        android:hardwareAccelerated="true"
+        android:supportsRtl="true"
+        android:extractNativeLibs="false"
+        android:usesCleartextTraffic="true"
+        android:appComponentFactory="androidx.core.app.CoreComponentFactory">
+        <uses-library
+            android:name="org.apache.http.legacy"
+            android:required="false"/>
+        <meta-data
+            android:name="PROJECT_KEY"
+            android:value="87a8d51d68114d4f352d1f68e24f86ab"/>
+        <meta-data
+            android:name="CUSTOM_CHANNEL"
+            android:value="googleplay"/>
+        <meta-data
+            android:name="CHANNEL"
+            android:value="Channel_ID"/>
+        <meta-data
+            android:name="BMOB_CHANNEL"
+            android:value="HELMSMAN_RELEASE"/>
+        <meta-data
+            android:name="com.bugsnag.android.API_KEY"
+            android:value="bb01cedff2923b945c21e8472f6d8e71"/>
+        <meta-data
+            android:name="BUG_HD_SDK_GENERAL_KEY"
+            android:value="4f3d2c957d6eee2074dba40d1658b22b"/>
+        <meta-data
+            android:name="com.amap.api.v2.apikey"
+            android:value="668bed79c0253dc83207a35692a2844f"/>
+        <meta-data
+            android:name="design_width"
+            android:value="1080"/>
+        <meta-data
+            android:name="design_height"
+            android:value="1920"/>
+        <uses-library
+            android:name="com.google.android.maps"
+            android:required="false"/>
+        <meta-data
+            android:name="com.facebook.sdk.ApplicationId"
+            android:value="@string/facebook_app_id"/>
+        <meta-data
+            android:name="com.google.android.gms.version"
+            android:value="@integer/google_play_services_version"/>
+        <meta-data
+            android:name="com.google.android.maps.v2.API_KEY"
+            android:value="AIzaSyCGcq72nynfRS8C-pY3ycwE4ZFLO_Wm46M"/>
+        <service
+            android:name="cn.jpush.android.service.PushService"
+            android:exported="false"
+            android:process=":multiprocess">
+            <intent-filter>
+                <action android:name="cn.jpush.android.intent.REGISTER"/>
+                <action android:name="cn.jpush.android.intent.REPORT"/>
+                <action android:name="cn.jpush.android.intent.PushService"/>
+                <action android:name="cn.jpush.android.intent.PUSH_TIME"/>
+            </intent-filter>
+        </service>
+        <service
+            android:name="im.helmsman.helmsmanandroid.service.MyJCommonService"
+            android:exported="true"
+            android:process=":multiprocess">
+            <intent-filter>
+                <action android:name="cn.jiguang.user.service.action"/>
+            </intent-filter>
+        </service>
+        <service
+            android:name="cn.jpush.android.service.DaemonService"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="cn.jpush.android.intent.DaemonService"/>
+                <category android:name="im.helmsman.helmsmanandroid"/>
+            </intent-filter>
+        </service>
+        <activity
+            android:name="im.helmsman.helmsmanandroid.ui.activity.StartActivity"
+            android:exported="true"
+            android:configChanges="screenSize|orientation">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity>
+        <activity
+            android:theme="@android:style/Theme.NoTitleBar"
+            android:name="cn.jpush.android.ui.PushActivity"
+            android:exported="false"
+            android:configChanges="orientation|keyboardHidden">
+            <intent-filter>
+                <action android:name="cn.jpush.android.ui.PushActivity"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="im.helmsman.helmsmanandroid"/>
+            </intent-filter>
+        </activity>
+        <activity
+            android:theme="@android:style/Theme.Translucent.NoTitleBar"
+            android:name="cn.jpush.android.service.JNotifyActivity"
+            android:exported="false"
+            android:taskAffinity="jpush.custom">
+            <intent-filter>
+                <action android:name="cn.jpush.android.intent.JNotifyActivity"/>
+                <category android:name="im.helmsman.helmsmanandroid"/>
+            </intent-filter>
+        </activity>
+        <activity
+            android:name="im.helmsman.helmsmanandroid.ui.activity.MainActivity"
+            android:exported="false"
+            android:configChanges="layoutDirection|screenSize|orientation|locale"/>
+        <activity
+            android:theme="@style/RedLightTheme"
+            android:name="im.helmsman.helmsmanandroid.ui.activity.SettingActivity"
+            android:exported="false"
+            android:configChanges="screenSize|orientation"/>
+        <activity
+            android:theme="@style/RedLightTheme"
+            android:name="im.helmsman.helmsmanandroid.ui.activity.InstructionsActivity"
+            android:exported="false"
+            android:configChanges="screenSize|orientation"/>
+        <activity
+            android:name="im.helmsman.helmsmanandroid.ui.activity.WebViewActivity"
+            android:exported="false"
+            android:configChanges="screenSize|orientation"/>
+        <activity
+            android:name="im.helmsman.helmsmanandroid.ui.activity.BleBlueToothActivity"
+            android:exported="false"
+            android:configChanges="screenSize|orientation"/>
+        <activity
+            android:name="im.helmsman.helmsmanandroid.ui.activity.AddRouteActivity"
+            android:exported="false"
+            android:configChanges="screenSize|orientation"/>
+        <activity
+            android:name="im.helmsman.helmsmanandroid.ui.activity.EditRouteActivity"
+            android:exported="false"
+            android:configChanges="screenSize|orientation"
+            android:windowSoftInputMode="adjustResize"/>
+        <activity
+            android:name="im.helmsman.helmsmanandroid.ui.activity.HeadingCalibrationActivity"
+            android:exported="false"
+            android:configChanges="screenSize|orientation"/>
+        <activity
+            android:name="im.helmsman.helmsmanandroid.ui.activity.NaviModeActivity"
+            android:exported="false"
+            android:configChanges="screenSize|orientation"/>
+        <activity
+            android:theme="@style/RedLightTheme"
+            android:name="im.helmsman.helmsmanandroid.ui.activity.MyDevicesActivity"
+            android:exported="false"
+            android:configChanges="screenSize|orientation"/>
+        <activity
+            android:theme="@style/RedLightTheme"
+            android:name="im.helmsman.helmsmanandroid.ui.activity.BoatListActivity"
+            android:exported="false"
+            android:configChanges="screenSize|orientation"/>
+        <activity
+            android:theme="@style/RedLightTheme"
+            android:name="im.helmsman.helmsmanandroid.ui.activity.AccountActivity"
+            android:exported="false"
+            android:configChanges="screenSize|orientation"/>
+        <activity
+            android:name="im.helmsman.helmsmanandroid.ui.activity.CaptureActivityVertical"
+            android:exported="false"
+            android:stateNotNeeded="true"
+            android:configChanges="screenSize|orientation"
+            android:windowSoftInputMode="stateAlwaysHidden"/>
+        <receiver
+            android:name="cn.jpush.android.service.PushReceiver"
+            android:enabled="true"
+            android:exported="false">
+            <intent-filter android:priority="1000">
+                <action android:name="cn.jpush.android.intent.NOTIFICATION_RECEIVED_PROXY"/>
+                <category android:name="im.helmsman.helmsmanandroid"/>
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.USER_PRESENT"/>
+                <action android:name="android.net.conn.CONNECTIVITY_CHANGE"/>
+            </intent-filter>
+        </receiver>
+        <receiver
+            android:name="im.helmsman.helmsmanandroid.receiver.MyJpushMessageReceiver"
+            android:enabled="true"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="cn.jpush.android.intent.RECEIVE_MESSAGE"/>
+                <category android:name="im.helmsman.helmsmanandroid"/>
+            </intent-filter>
+        </receiver>
+        <receiver
+            android:name="cn.jpush.android.service.AlarmReceiver"
+            android:exported="false"/>
+        <receiver
+            android:name="cn.jpush.android.service.SchedulerReceiver"
+            android:exported="false"/>
+        <receiver
+            android:name="im.helmsman.helmsmanandroid.receiver.JpushMessageReceiver"
+            android:enabled="true"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="cn.jpush.android.intent.REGISTRATION"/>
+                <action android:name="cn.jpush.android.intent.MESSAGE_RECEIVED"/>
+                <action android:name="cn.jpush.android.intent.NOTIFICATION_RECEIVED"/>
+                <action android:name="cn.jpush.android.intent.NOTIFICATION_OPENED"/>
+                <action android:name="cn.jpush.android.intent.CONNECTION"/>
+                <category android:name="im.helmsman.helmsmanandroid"/>
+            </intent-filter>
+        </receiver>
+        <provider
+            android:name="cn.jpush.android.service.DataProvider"
+            android:exported="false"
+            android:process=":multiprocess"
+            android:authorities="im.helmsman.helmsmanandroid.DataProvider"/>
+        <provider
+            android:name="cn.jpush.android.service.DownloadProvider"
+            android:exported="true"
+            android:authorities="im.helmsman.helmsmanandroid.DownloadProvider"/>
+        <activity
+            android:name="im.helmsman.helmsmanandroid.ui.activity.MyFollowingRouteActivity"
+            android:exported="false"
+            android:configChanges="screenSize|orientation"/>
+        <activity
+            android:name="im.helmsman.helmsmanandroid.ui.activity.DiagnosticsActivity"
+            android:exported="false"
+            android:configChanges="screenSize|orientation"/>
+        <activity
+            android:name="im.helmsman.helmsmanandroid.ui.activity.SendMessageActivity"
+            android:exported="false"
+            android:configChanges="screenSize|orientation"
+            android:windowSoftInputMode="adjustResize"/>
+        <activity
+            android:name="im.helmsman.helmsmanandroid.ui.activity.ConnectWifiActivity"
+            android:exported="false"
+            android:configChanges="screenSize|orientation"/>
+        <activity
+            android:name="im.helmsman.helmsmanandroid.ui.activity.CommentActivity"
+            android:exported="false"
+            android:configChanges="screenSize|orientation"
+            android:windowSoftInputMode="adjustResize"/>
+        <activity
+            android:label="@string/title_activity_friends"
+            android:name="im.helmsman.helmsmanandroid.ui.activity.FriendsActivity"
+            android:exported="false"
+            android:configChanges="screenSize|orientation"/>
+        <activity
+            android:name="im.helmsman.helmsmanandroid.ui.activity.FriendsMessageInfoActivity"
+            android:exported="false"/>
+        <activity
+            android:name="im.helmsman.helmsmanandroid.ui.activity.MessageDetailActivity"
+            android:exported="false"
+            android:configChanges="screenSize|orientation"/>
+        <activity
+            android:theme="@style/AppBaseTheme_whiteLine_redstatus"
+            android:name="im.helmsman.helmsmanandroid.ui.activity.AddFrinedsActivity"
+            android:exported="false"
+            android:configChanges="screenSize|orientation"/>
+        <activity
+            android:label="RequestList"
+            android:name="im.helmsman.helmsmanandroid.ui.activity.MyRequestActivity"
+            android:exported="false"
+            android:configChanges="screenSize|orientation"/>
+        <activity
+            android:label="Contact us"
+            android:name="im.helmsman.helmsmanandroid.ui.activity.MyContactZendeskActivity"
+            android:exported="true"
+            android:configChanges="screenSize|orientation"/>
+        <activity
+            android:theme="@style/RedLightTheme"
+            android:name="im.helmsman.helmsmanandroid.ui.activity.ShopActivity"
+            android:exported="false"/>
+        <activity
+            android:name="im.helmsman.helmsmanandroid.ui.activity.CommodityDetailActivity"
+            android:exported="false"
+            android:configChanges="screenSize|orientation"/>
+        <activity
+            android:theme="@style/RedLightTheme"
+            android:name="im.helmsman.helmsmanandroid.ui.activity.UseManualsActivity"
+            android:exported="false"
+            android:configChanges="screenSize|orientation"/>
+        <activity
+            android:theme="@style/RedLightTheme"
+            android:name="im.helmsman.helmsmanandroid.ui.activity.HelmsmanCollegeActivity"
+            android:exported="false"
+            android:configChanges="screenSize|orientation"/>
+        <activity
+            android:theme="@style/AppBaseTheme_whiteLine_redstatus"
+            android:name="im.helmsman.helmsmanandroid.ui.activity.HelmsmanCollegeSearchActivity"
+            android:exported="false"
+            android:configChanges="screenSize|orientation"/>
+        <activity
+            android:name="im.helmsman.helmsmanandroid.ui.activity.HelpCenterActivity"
+            android:exported="false"
+            android:configChanges="screenSize|orientation"/>
+        <activity
+            android:name="im.helmsman.helmsmanandroid.ui.activity.QuickStartActivity"
+            android:exported="false"
+            android:configChanges="screenSize|orientation"/>
+        <activity
+            android:theme="@style/RedLightTheme"
+            android:name="im.helmsman.helmsmanandroid.ui.activity.AutoConnectBleActivity"
+            android:exported="false"
+            android:configChanges="screenSize|orientation"/>
+        <activity
+            android:name="im.helmsman.helmsmanandroid.ui.activity.BleBlueToothAliasActivity"
+            android:exported="false"/>
+        <activity
+            android:name="im.helmsman.helmsmanandroid.ui.activity.NotificationActivity"
+            android:exported="false"
+            android:configChanges="screenSize|orientation"/>
+        <activity
+            android:name="im.helmsman.helmsmanandroid.ui.activity.CommentsNotificationActivity"
+            android:exported="false"/>
+        <activity
+            android:name="im.helmsman.helmsmanandroid.ui.activity.CommentContentActivity"
+            android:exported="false"/>
+        <activity
+            android:name="im.helmsman.helmsmanandroid.ui.activity.FavouriteMessageActivity"
+            android:exported="false"/>
+        <activity
+            android:theme="@style/AppBaseTheme_whiteLine"
+            android:name="im.helmsman.helmsmanandroid.ui.activity.AtFriendsActivity"
+            android:exported="false"/>
+        <activity
+            android:label="@string/app_name"
+            android:name="im.helmsman.helmsmanandroid.wxapi.WXEntryActivity"
+            android:exported="true"
+            android:launchMode="singleInstance"
+            android:screenOrientation="portrait"
+            android:configChanges="screenSize|orientation|keyboardHidden">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <data android:scheme="sdksample"/>
+            </intent-filter>
+        </activity>
+        <activity
+            android:name="im.helmsman.helmsmanandroid.ui.activity.AccountSecuriytActivity"
+            android:exported="false"/>
+        <activity
+            android:name="im.helmsman.helmsmanandroid.ui.activity.BindEmailActivity"
+            android:exported="false"/>
+        <activity
+            android:name="im.helmsman.helmsmanandroid.ui.activity.ModifyPasswordActivity"
+            android:exported="false"/>
+        <activity
+            android:name="im.helmsman.helmsmanandroid.ui.activity.NotificationSettingActivity"
+            android:exported="false"/>
+        <activity
+            android:name="im.helmsman.helmsmanandroid.ui.activity.LoginActivity"
+            android:exported="false"/>
+        <activity
+            android:name="im.helmsman.helmsmanandroid.ui.activity.AvatarActivity"
+            android:exported="false"/>
+        <provider
+            android:name="im.helmsman.helmsmanandroid.provider.MyFileProvider"
+            android:exported="false"
+            android:authorities="im.helmsman.helmsmanandroid.fileProvider"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/my_file_paths"/>
+        </provider>
+        <activity
+            android:name="im.helmsman.helmsmanandroid.ui.activity.UnitSelectActivity"
+            android:exported="false"/>
+        <meta-data
+            android:name="JPUSH_CHANNEL"
+            android:value="developer-default"/>
+        <meta-data
+            android:name="JPUSH_APPKEY"
+            android:value="b256e50a88ef977ee43c00d2"/>
+        <receiver
+            android:name="com.zendesk.sdk.power.BatteryStateBroadcastReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BATTERY_LOW"/>
+                <action android:name="android.intent.action.BATTERY_OKAY"/>
+            </intent-filter>
+        </receiver>
+        <activity
+            android:label="@string/contact_fragment_title"
+            android:name="com.zendesk.sdk.feedback.ui.ContactZendeskActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize|stateVisible"/>
+        <activity
+            android:label="@string/contact_fragment_title"
+            android:name="com.zendesk.sdk.requests.ViewRequestActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize|stateHidden"/>
+        <activity
+            android:label="@string/request_list_activity_title"
+            android:name="com.zendesk.sdk.requests.RequestActivity"
+            android:exported="false"/>
+        <activity
+            android:name="com.zendesk.sdk.support.ViewArticleActivity"
+            android:exported="false"
+            android:configChanges="screenSize|orientation"/>
+        <activity
+            android:label="@string/support_activity_title"
+            android:name="com.zendesk.sdk.support.SupportActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize"/>
+        <receiver
+            android:name="com.zendesk.sdk.deeplinking.ZendeskDeepLinkingBroadcastReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.zendesk.sdk.deeplinking"/>
+            </intent-filter>
+        </receiver>
+        <activity
+            android:theme="@style/com_facebook_activity_theme"
+            android:name="com.facebook.FacebookActivity"
+            android:exported="false"
+            android:configChanges="screenSize|screenLayout|orientation|keyboardHidden|keyboard"/>
+        <activity
+            android:name="com.facebook.CustomTabMainActivity"
+            android:exported="false"/>
+        <activity
+            android:name="com.facebook.CustomTabActivity"
+            android:exported="false"/>
+        <activity
+            android:theme="@android:style/Theme.Translucent.NoTitleBar"
+            android:name="com.google.android.gms.common.api.GoogleApiActivity"
+            android:exported="false"/>
+        <provider
+            android:name="com.zendesk.belvedere.BelvedereFileProvider"
+            android:exported="false"
+            android:authorities="im.helmsman.helmsmanandroid.belvedere.attachments"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/belvedere_attachment_storage"/>
+        </provider>
+        <provider
+            android:name="com.facebook.internal.FacebookInitProvider"
+            android:exported="false"
+            android:authorities="im.helmsman.helmsmanandroid.FacebookInitProvider"/>
+        <receiver
+            android:name="com.facebook.CurrentAccessTokenExpirationBroadcastReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.facebook.sdk.ACTION_CURRENT_ACCESS_TOKEN_CHANGED"/>
+            </intent-filter>
+        </receiver>
+        <provider
+            android:name="androidx.startup.InitializationProvider"
+            android:exported="false"
+            android:authorities="im.helmsman.helmsmanandroid.androidx-startup">
+            <meta-data
+                android:name="androidx.profileinstaller.ProfileInstallerInitializer"
+                android:value="androidx.startup"/>
+        </provider>
+        <receiver
+            android:name="androidx.profileinstaller.ProfileInstallReceiver"
+            android:permission="android.permission.DUMP"
+            android:enabled="true"
+            android:exported="true"
+            android:directBootAware="false">
+            <intent-filter>
+                <action android:name="androidx.profileinstaller.action.INSTALL_PROFILE"/>
+            </intent-filter>
+            <intent-filter>
+                <action android:name="androidx.profileinstaller.action.SKIP_FILE"/>
+            </intent-filter>
+            <intent-filter>
+                <action android:name="androidx.profileinstaller.action.SAVE_PROFILE"/>
+            </intent-filter>
+            <intent-filter>
+                <action android:name="androidx.profileinstaller.action.BENCHMARK_OPERATION"/>
+            </intent-filter>
+        </receiver>
+        <meta-data
+            android:name="com.android.vending.splits.required"
+            android:value="true"/>
+        <meta-data
+            android:name="com.android.stamp.source"
+            android:value="https://play.google.com/store"/>
+        <meta-data
+            android:name="com.android.stamp.type"
+            android:value="STAMP_TYPE_DISTRIBUTION_APK"/>
+        <meta-data
+            android:name="com.android.vending.splits"
+            android:resource="@xml/splits0"/>
+        <meta-data
+            android:name="com.android.vending.derived.apk.id"
+            android:value="3"/>
+    </application>
+</manifest>

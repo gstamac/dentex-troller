@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/linear_itemview_layout"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:minHeight="264px">
+    <de.hdodenhof.circleimageview.CircleImageView
+        android:id="@+id/ci_friendslist_avatar"
+        android:layout_width="120px"
+        android:layout_height="120px"
+        android:layout_marginLeft="48px"
+        android:src="0x7f0701cc"
+        android:layout_centerVertical="true"/>
+    <LinearLayout
+        android:layout_gravity="center_vertical"
+        android:orientation="vertical"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginLeft="48px"
+        android:layout_toRightOf="@+id/ci_friendslist_avatar"
+        android:layout_centerVertical="true">
+        <TextView
+            android:textSize="17sp"
+            android:textColor="@android:color/black"
+            android:ellipsize="end"
+            android:gravity="center_vertical"
+            android:id="@+id/tv_friendlist_name"
+            android:layout_width="500px"
+            android:layout_height="wrap_content"
+            android:text="Kavi Chen"
+            android:singleLine="true"/>
+        <TextView
+            android:textSize="12sp"
+            android:ellipsize="end"
+            android:id="@+id/tv_friendlist_description"
+            android:layout_width="550px"
+            android:layout_height="wrap_content"
+            android:minWidth="550px"
+            android:text="Proin leo odio, porttitor id… "
+            android:singleLine="true"/>
+        <TextView
+            android:textSize="10sp"
+            android:id="@+id/tv_friendactivity_followerCount"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="follower 2533"
+            android:alpha="250"/>
+    </LinearLayout>
+    <ImageView
+        android:id="@+id/btn_friendsactivity_follow"
+        android:padding="50px"
+        android:layout_width="180px"
+        android:layout_height="180px"
+        android:layout_marginTop="50px"
+        android:layout_marginBottom="50px"
+        android:src="0x7f070203"
+        android:layout_alignParentRight="true"
+        android:layout_centerVertical="true"/>
+    <com.tt.whorlviewlibrary.WhorlView
+        android:id="@+id/progress_friendsactivity_follow"
+        android:visibility="gone"
+        android:layout_width="80px"
+        android:layout_height="80px"
+        android:layout_margin="50px"
+        android:layout_alignParentRight="true"
+        android:layout_centerVertical="true"
+        app:whorlview_circle_colors="#F14336"
+        app:whorlview_circle_speed="270"
+        app:whorlview_parallax="fast"
+        app:whorlview_strokeWidth="6"
+        app:whorlview_sweepAngle="90"/>
+</RelativeLayout>

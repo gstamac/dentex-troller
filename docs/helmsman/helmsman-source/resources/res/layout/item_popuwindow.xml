@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content">
+    <RelativeLayout
+        android:id="@+id/rel_pupu"
+        android:background="@color/main_red"
+        android:layout_width="match_parent"
+        android:layout_height="60dp">
+        <ImageView
+            android:id="@+id/iv_popu_left"
+            android:layout_width="35dp"
+            android:layout_height="20dp"
+            android:layout_margin="20dp"
+            android:src="@drawable/icon_main_connection_error_left"/>
+        <TextView
+            android:textSize="14dp"
+            android:textStyle="bold"
+            android:textColor="@color/white"
+            android:id="@+id/tv_popu_connection"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="15dp"
+            android:layout_toRightOf="@+id/iv_popu_left"/>
+        <TextView
+            android:textSize="12dp"
+            android:textColor="@color/white"
+            android:id="@+id/tv_popu_conection_content"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="15dp"
+            android:layout_toRightOf="@+id/iv_popu_left"
+            android:layout_alignParentBottom="true"/>
+    </RelativeLayout>
+</RelativeLayout>

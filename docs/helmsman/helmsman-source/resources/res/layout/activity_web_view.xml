@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:orientation="vertical"
+    android:fitsSystemWindows="true"
+    android:clipToPadding="true"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+    <im.helmsman.helmsmanandroid.view.TitleBar
+        android:id="@+id/titleBar"
+        android:background="@android:color/white"
+        android:layout_width="match_parent"
+        android:layout_height="168px"
+        app:title="@string/setting_instructions"/>
+    <ProgressBar
+        android:id="@+id/pb_webview"
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:layout_marginTop="-1dp"
+        android:layout_marginBottom="0.5dp"
+        android:max="65"
+        android:progressDrawable="@drawable/pb_webview_color"
+        android:layout_alignParentBottom="true"
+        style="?android:attr/progressBarStyleHorizontal"/>
+    <im.helmsman.helmsmanandroid.view.CustomScrollView
+        android:id="@+id/custom_scroll_view"
+        android:background="@color/white"
+        android:visibility="gone"
+        android:scrollbars="none"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:layout_below="@+id/rel_webview_titlebar">
+        <WebView
+            android:id="@+id/webview"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_below="@+id/custom"/>
+    </im.helmsman.helmsmanandroid.view.CustomScrollView>
+</LinearLayout>

@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:orientation="vertical"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+    <LinearLayout style="@style/rma_feedback_message_container">
+        <TextView
+            android:text="@string/rate_my_app_dialog_feedback_title_label"
+            style="@style/rma_feedback_message_title"/>
+        <TextView
+            android:text="@string/rate_my_app_dialog_feedback_description_label"
+            style="@style/rma_feedback_message_subtitle"/>
+    </LinearLayout>
+    <View style="@style/rma_feedback_divider"/>
+    <LinearLayout style="@style/rma_feedback_issue_container">
+        <FrameLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content">
+            <EditText
+                android:id="@+id/rma_feedback_issue_edittext"
+                android:hint="@string/rate_my_app_dialogue_feedback_issue_hint"
+                style="@style/rma_feedback_issue_edittext"/>
+            <ProgressBar
+                android:layout_gravity="center"
+                android:id="@+id/rma_feedback_issue_progress"
+                android:visibility="gone"
+                style="@style/rma_feedback_progress"/>
+        </FrameLayout>
+        <LinearLayout style="@style/rma_feedback_issue_button_container">
+            <Button
+                android:id="@+id/rma_feedback_issue_cancel_button"
+                android:text="@string/rate_my_app_dialogue_feedback_cancel_button_label"
+                style="@style/rma_feedback_issue_cancel_button"/>
+            <Button
+                android:enabled="false"
+                android:id="@+id/rma_feedback_issue_send_button"
+                android:text="@string/rate_my_app_dialogue_feedback_send_button_label"
+                style="@style/rma_feedback_issue_send_button"/>
+        </LinearLayout>
+    </LinearLayout>
+</LinearLayout>

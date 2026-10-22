@@ -1,0 +1,75 @@
+package org.bouncycastle.asn1.cmp;
+
+import org.bouncycastle.asn1.ASN1Encodable;
+import org.bouncycastle.asn1.ASN1EncodableVector;
+import org.bouncycastle.asn1.ASN1OctetString;
+import org.bouncycastle.asn1.ASN1Sequence;
+import org.bouncycastle.asn1.DEREncodable;
+import org.bouncycastle.asn1.DERInteger;
+import org.bouncycastle.asn1.DERObject;
+import org.bouncycastle.asn1.DERSequence;
+
+/* JADX INFO: loaded from: classes2.dex */
+public class CertResponse extends ASN1Encodable {
+    private DERInteger certReqId;
+    private CertifiedKeyPair certifiedKeyPair;
+    private ASN1OctetString rspInfo;
+    private PKIStatusInfo status;
+
+    private CertResponse(ASN1Sequence aSN1Sequence) {
+        DEREncodable objectAt;
+        this.certReqId = DERInteger.getInstance(aSN1Sequence.getObjectAt(0));
+        this.status = PKIStatusInfo.getInstance(aSN1Sequence.getObjectAt(1));
+        if (aSN1Sequence.size() >= 3) {
+            if (aSN1Sequence.size() == 3) {
+                objectAt = aSN1Sequence.getObjectAt(2);
+                if (!(objectAt instanceof ASN1OctetString)) {
+                    this.certifiedKeyPair = CertifiedKeyPair.getInstance(objectAt);
+                    return;
+                }
+            } else {
+                this.certifiedKeyPair = CertifiedKeyPair.getInstance(aSN1Sequence.getObjectAt(2));
+                objectAt = aSN1Sequence.getObjectAt(3);
+            }
+            this.rspInfo = ASN1OctetString.getInstance(objectAt);
+        }
+    }
+
+    public static CertResponse getInstance(Object obj) {
+        if (obj instanceof CertResponse) {
+            return (CertResponse) obj;
+        }
+        if (obj instanceof ASN1Sequence) {
+            return new CertResponse((ASN1Sequence) obj);
+        }
+        throw new IllegalArgumentException("Invalid object: " + obj.getClass().getName());
+    }
+
+    public DERInteger getCertReqId() {
+        return this.certReqId;
+    }
+
+    public CertifiedKeyPair getCertifiedKeyPair() {
+        return this.certifiedKeyPair;
+    }
+
+    public PKIStatusInfo getStatus() {
+        return this.status;
+    }
+
+    @Override // org.bouncycastle.asn1.ASN1Encodable
+    public DERObject toASN1Object() {
+        ASN1EncodableVector aSN1EncodableVector = new ASN1EncodableVector();
+        aSN1EncodableVector.add(this.certReqId);
+        aSN1EncodableVector.add(this.status);
+        CertifiedKeyPair certifiedKeyPair = this.certifiedKeyPair;
+        if (certifiedKeyPair != null) {
+            aSN1EncodableVector.add(certifiedKeyPair);
+        }
+        ASN1OctetString aSN1OctetString = this.rspInfo;
+        if (aSN1OctetString != null) {
+            aSN1EncodableVector.add(aSN1OctetString);
+        }
+        return new DERSequence(aSN1EncodableVector);
+    }
+}

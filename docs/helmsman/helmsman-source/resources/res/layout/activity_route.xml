@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:orientation="vertical"
+    android:fitsSystemWindows="true"
+    android:clipToPadding="true"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+    <com.chanven.lib.cptr.PtrClassicFrameLayout
+        android:id="@+id/swipe_refresh"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent">
+        <ListView
+            android:id="@+id/lv_edit"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:divider="#dbdbdb"
+            android:dividerHeight="8dp"/>
+    </com.chanven.lib.cptr.PtrClassicFrameLayout>
+    <ImageView
+        android:layout_gravity="bottom|right"
+        android:id="@+id/iv_addroute"
+        android:layout_width="250px"
+        android:layout_height="250px"
+        android:layout_marginRight="48px"
+        android:layout_marginBottom="72px"
+        android:src="0x7f0701fb"
+        android:scaleType="centerCrop"
+        app:layout_auto_baseheight="width"/>
+</FrameLayout>

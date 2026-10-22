@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:orientation="horizontal"
+    android:background="@android:color/black"
+    android:padding="80px"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+    <ImageView
+        android:layout_gravity="center_vertical"
+        android:id="@+id/iv_drawermenu_icon"
+        android:layout_width="80px"
+        android:layout_height="80px"
+        android:layout_marginLeft="20px"
+        android:src="0x7f0701f4"/>
+    <TextView
+        android:textColor="#d8cecc"
+        android:layout_gravity="center_vertical"
+        android:id="@+id/tv_drawermenu_menustr"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginLeft="120px"
+        android:text="INSTRUCTIONS"/>
+</LinearLayout>

@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:orientation="vertical"
+    android:id="@+id/activity_helmsman_college_search"
+    android:fitsSystemWindows="true"
+    android:clipToPadding="true"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+    <RelativeLayout
+        android:background="@color/title_red"
+        android:layout_width="match_parent"
+        android:layout_height="56dp">
+        <ImageView
+            android:id="@+id/iv_helmsman_college_seasrch_back"
+            android:layout_width="23dp"
+            android:layout_height="23dp"
+            android:layout_marginLeft="17dp"
+            android:src="0x7f0701db"
+            android:scaleType="fitXY"
+            android:layout_centerVertical="true"/>
+        <im.helmsman.helmsmanandroid.view.SearchView
+            android:textSize="20dp"
+            android:textColor="@color/white"
+            android:id="@+id/tv_helmsman_college_search_title"
+            android:layout_width="700px"
+            android:layout_height="wrap_content"
+            android:layout_marginLeft="100px"
+            android:text="@string/helmsman_college_title"
+            android:layout_centerInParent="true"/>
+    </RelativeLayout>
+    <ListView
+        android:id="@+id/lv_helmsman_college_search_list"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:divider="@null"/>
+</LinearLayout>

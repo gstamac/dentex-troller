@@ -1,0 +1,28 @@
+package com.tencent.wxop.stat;
+
+import java.util.List;
+
+/* JADX INFO: loaded from: classes2.dex */
+class av implements Runnable {
+    final /* synthetic */ List a;
+    final /* synthetic */ int b;
+    final /* synthetic */ boolean c;
+    final /* synthetic */ boolean d;
+    final /* synthetic */ au e;
+
+    av(au auVar, List list, int i, boolean z, boolean z2) {
+        this.e = auVar;
+        this.a = list;
+        this.b = i;
+        this.c = z;
+        this.d = z2;
+    }
+
+    @Override // java.lang.Runnable
+    public void run() {
+        this.e.a((List<bd>) this.a, this.b, this.c);
+        if (this.d) {
+            this.a.clear();
+        }
+    }
+}

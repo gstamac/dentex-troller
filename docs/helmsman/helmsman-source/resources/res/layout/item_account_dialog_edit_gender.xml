@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:orientation="vertical"
+    android:paddingLeft="16dp"
+    android:paddingTop="16dp"
+    android:paddingRight="16dp"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content">
+    <TextView
+        android:textSize="18sp"
+        android:textColor="@color/black"
+        android:id="@+id/tv_account_gender_man"
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:text="@string/userinfofragment_male"/>
+    <TextView
+        android:textSize="18sp"
+        android:textColor="@color/black"
+        android:id="@+id/tv_account_gender_women"
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:text="@string/userinfofragment_famale"/>
+    <TextView
+        android:textSize="18sp"
+        android:textColor="@color/black"
+        android:id="@+id/tv_account_gender_unset"
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:text="@string/userinfofragment_secrecy"/>
+</LinearLayout>

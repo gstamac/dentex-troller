@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:orientation="vertical"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+    <RadioGroup
+        android:id="@+id/rg_distance_unit_select"
+        android:paddingBottom="24dp"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:layout_marginLeft="24dp"
+        android:layout_marginTop="32dp">
+        <RadioButton
+            android:textSize="16sp"
+            android:id="@+id/rb_distance_m_km"
+            android:paddingLeft="24dp"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="12dp"
+            android:text="M or KM"/>
+        <RadioButton
+            android:textSize="16sp"
+            android:id="@+id/rb_distance_M_NM"
+            android:tag="2"
+            android:paddingLeft="24dp"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:layout_marginBottom="12dp"
+            android:text="M or NM"/>
+        <RadioButton
+            android:textSize="16sp"
+            android:id="@+id/rb_distance_FT_NM"
+            android:tag="2"
+            android:paddingLeft="24dp"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="FT or NM"/>
+    </RadioGroup>
+</LinearLayout>

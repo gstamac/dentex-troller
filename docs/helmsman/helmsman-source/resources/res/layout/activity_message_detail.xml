@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:orientation="vertical"
+    android:fitsSystemWindows="true"
+    android:clipToPadding="true"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+    <im.helmsman.helmsmanandroid.view.TitleBar
+        android:id="@+id/titleBar"
+        android:background="@android:color/white"
+        android:layout_width="match_parent"
+        android:layout_height="168px"
+        app:center_icon_height="102px"
+        app:center_icon_width="102px"
+        app:right_drawable="0x7f07024c"
+        app:right_icon_height="48dp"
+        app:right_icon_width="48dp">
+        <de.hdodenhof.circleimageview.CircleImageView
+            android:id="@+id/civ_messagedetail"
+            android:layout_width="34dp"
+            android:layout_height="34dp"
+            android:layout_centerInParent="true"/>
+    </im.helmsman.helmsmanandroid.view.TitleBar>
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent">
+        <ViewStub
+            android:id="@+id/vs_google_map"
+            android:layout="@layout/layout_googlemap"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"/>
+        <ViewStub
+            android:id="@+id/vs_gaode_map"
+            android:layout="@layout/layout_gaodemap"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"/>
+        <TextView
+            android:textColor="@android:color/black"
+            android:id="@+id/tv_messagedetail_description"
+            android:background="@android:color/white"
+            android:padding="20px"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="safdhsaugfoupsagtf9sagtf9igeasduirfg"
+            android:alpha="0.7"/>
+        <LinearLayout
+            android:layout_gravity="bottom"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content">
+            <include layout="@layout/include_bottom_comment_bar"/>
+        </LinearLayout>
+    </FrameLayout>
+</LinearLayout>
