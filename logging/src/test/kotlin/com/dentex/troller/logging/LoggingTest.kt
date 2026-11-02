@@ -84,4 +84,17 @@ class RedactionTest {
         assertEquals(45.12, Redaction.coarsenLatitude(45.123456), 1e-9)
         assertEquals(13.87, Redaction.coarsenLongitude(13.874321), 1e-9)
     }
+
+    @Test
+    fun theExportMasksDeviceAddressesButKeepsPayloads() {
+        val log = DiagnosticLog()
+        log.event("SCAN", "Remote aa:bb:cc:dd:ee:ff -60 dBm")
+        log.rx("BLE", byteArrayOf(0xFE.toByte(), 0x09))
+
+        val export = log.exportText(Redaction::redactEntry)
+
+        assertTrue(export.contains("Remote AA:BB:CC:??:??:?? -60 dBm"))
+        assertTrue(!export.contains("dd:ee:ff"))
+        assertTrue(export.contains("FE 09"))
+    }
 }

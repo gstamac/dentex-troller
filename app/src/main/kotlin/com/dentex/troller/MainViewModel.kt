@@ -17,16 +17,23 @@ import com.dentex.troller.haswing.MotorTelemetry
 import com.dentex.troller.haswing.MotorTransport
 import com.dentex.troller.logging.DiagnosticLog
 import com.dentex.troller.logging.LogEntry
+import com.dentex.troller.logging.Redaction
 import com.dentex.troller.mavlink.HelmsmanMavlinkCodec
 import com.dentex.troller.mavlink.MavlinkMessage
 import com.dentex.troller.navigation.MissionProgress
 import com.dentex.troller.navigation.MissionTransfer
 import com.dentex.troller.navigation.Route
 import com.dentex.troller.navigation.Waypoint
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onStart
+import kotlinx.coroutines.flow.sample
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -39,7 +46,6 @@ data class MainUiState(
     val identity: MotorIdentity? = null,
     val telemetry: MotorTelemetry = MotorTelemetry(),
     val commandGate: CommandGateState = CommandGateState.UNVERIFIED,
-    val logEntries: List<LogEntry> = emptyList(),
     val missionProgress: MissionProgress = MissionProgress(MissionProgress.Phase.IDLE),
     val downloadedRoute: Route? = null,
     val notice: String? = null,
@@ -70,12 +76,25 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     /** Route transfer state machine. */
     val mission = MissionTransfer(
         scope = viewModelScope,
-        sendMessage = { message -> motor.send(message) },
-        requestRouteList = { motor.requestRouteDownload() },
+        sendMessage = { message -> reportFailure(motor.send(message)) },
+        requestRouteList = { reportFailure(motor.requestRouteDownload()) },
     )
 
     private val _uiState = MutableStateFlow(MainUiState())
     val uiState: StateFlow<MainUiState> = _uiState.asStateFlow()
+
+    /**
+     * Retained log records for the diagnostics screen.
+     *
+     * Kept out of [uiState] and sampled, so that BLE traffic does not redraw every screen for
+     * every notification, and only copied while the diagnostics screen is visible.
+     */
+    @OptIn(FlowPreview::class)
+    val logEntries: StateFlow<List<LogEntry>> = log.changes
+        .sample(LOG_REFRESH_MILLIS)
+        .onStart { emit(log.changes.value) }
+        .map { log.entries }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     private var scanJob: Job? = null
 
@@ -83,8 +102,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             transport.connectionState.collect { state ->
                 _uiState.update { it.copy(connectionState = state) }
-                if (state is ConnectionState.Disconnected || state is ConnectionState.Failed) {
-                    motor.onDisconnected()
+                when (state) {
+                    is ConnectionState.Ready -> motor.onConnected()
+                    is ConnectionState.Disconnected, is ConnectionState.Failed -> {
+                        motor.onDisconnected()
+                        // Stop a running transfer; keep the outcome of a finished one visible.
+                        val phase = mission.progress.value.phase
+                        if (phase == MissionProgress.Phase.UPLOADING ||
+                            phase == MissionProgress.Phase.DOWNLOADING
+                        ) {
+                            mission.cancel()
+                        }
+                    }
+                    else -> Unit
                 }
             }
         }
@@ -119,11 +149,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             motor.commandGate.collect { gate ->
                 _uiState.update { it.copy(commandGate = gate) }
-            }
-        }
-        viewModelScope.launch {
-            log.changes.collect {
-                _uiState.update { it.copy(logEntries = log.entries) }
             }
         }
         viewModelScope.launch {
@@ -269,8 +294,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         mission.cancel()
     }
 
-    /** Returns the diagnostic log as a text report. */
-    fun exportLog(): String = log.exportText()
+    /** Returns the diagnostic log as a text report, with device addresses masked. */
+    fun exportLog(): String = log.exportText(Redaction::redactEntry)
 
     /** Clears the diagnostic log. */
     fun clearLog() {
@@ -296,8 +321,23 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _uiState.update { it.copy(notice = message) }
     }
 
+    /** Converts a send result for the route transfer, telling the operator about failures. */
+    private fun reportFailure(result: CommandResult): Boolean = when (result) {
+        is CommandResult.Sent -> true
+        is CommandResult.Rejected -> false.also { notifyUser(result.reason) }
+        is CommandResult.Failed -> false.also { notifyUser(result.reason) }
+    }
+
     override fun onCleared() {
         scanJob?.cancel()
+        // viewModelScope is already cancelled here, so the link is released synchronously.
+        motor.onDisconnected()
+        transport.release()
         super.onCleared()
+    }
+
+    private companion object {
+        /** How often the diagnostics screen picks up new log records. */
+        const val LOG_REFRESH_MILLIS = 250L
     }
 }

@@ -23,7 +23,11 @@ interface BleTransport {
     /** Connects to the device identified by [deviceId] (a Bluetooth address). */
     suspend fun connect(deviceId: String)
 
-    /** Queues [bytes] for delivery. Returns once the bytes are queued, not once sent. */
+    /**
+     * Queues [bytes] for delivery. Returns once the bytes are queued, not once sent.
+     *
+     * Throws when the bytes cannot be queued, for example because the link is down.
+     */
     suspend fun write(bytes: ByteArray)
 
     /** Disconnects and releases the GATT resources. */

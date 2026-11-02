@@ -6,6 +6,8 @@ import com.dentex.troller.mavlink.Heartbeat
 import com.dentex.troller.mavlink.HelmsmanMavlinkCodec
 import com.dentex.troller.mavlink.MavlinkHeader
 import com.dentex.troller.mavlink.MavlinkMessage
+import com.dentex.troller.mavlink.MissionRequestList
+import com.dentex.troller.mavlink.SysStatus
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -30,6 +32,9 @@ fun interface MotorTransport {
  * - The emergency stop is always allowed, even before the profile is known.
  * - Nothing is replayed automatically. A reconnect starts from a clean state and never repeats a
  *   previously sent motor-on command.
+ * - The link is considered lost when the motor has not sent anything for [LINK_TIMEOUT_MILLIS],
+ *   like the `IsConnectedTimer` of the Helmsman application. A lost link closes the command gate
+ *   until the next heartbeat identifies the motor again.
  */
 class HaswingMotorController(
     private val transport: MotorTransport,
@@ -46,6 +51,10 @@ class HaswingMotorController(
     private val commandGateState = MutableStateFlow(CommandGateState.UNVERIFIED)
 
     private var heartbeatJob: Job? = null
+    private var linkWatchdogJob: Job? = null
+
+    @Volatile
+    private var lastMotorMessageMillis: Long = 0L
 
     override val identity: StateFlow<MotorIdentity?> = identityState.asStateFlow()
     override val telemetry: StateFlow<MotorTelemetry> = telemetryState.asStateFlow()
@@ -63,6 +72,10 @@ class HaswingMotorController(
      */
     fun onMessage(message: MavlinkMessage, systemId: Int = 0, componentId: Int = 0): Boolean {
         val now = clock()
+        // Helmsman ignores SYS_STATUS when it decides whether the motor is still talking.
+        val keepsLinkAlive = message !is SysStatus
+        if (keepsLinkAlive) lastMotorMessageMillis = now
+
         if (message is Heartbeat) {
             val identity = MotorIdentity(
                 heartbeatType = message.type,
@@ -86,10 +99,22 @@ class HaswingMotorController(
                     startHeartbeat()
                 }
             }
+            restartLinkWatchdog()
             return true
         }
+        if (keepsLinkAlive && identityState.value != null) restartLinkWatchdog()
         telemetryState.value = decoder.apply(message, telemetryState.value, now)
         return true
+    }
+
+    /**
+     * Marks the BLE link as ready.
+     *
+     * The Helmsman application sends its own heartbeat unconditionally while it is in the
+     * foreground, so the heartbeat starts here instead of waiting for the motor to speak first.
+     */
+    fun onConnected() {
+        if (autoHeartbeat) startHeartbeat()
     }
 
     /**
@@ -100,6 +125,8 @@ class HaswingMotorController(
      */
     fun onDisconnected() {
         stopHeartbeat()
+        linkWatchdogJob?.cancel()
+        linkWatchdogJob = null
         decoder.reset()
         identityState.value = null
         telemetryState.value = MotorTelemetry()
@@ -166,7 +193,7 @@ class HaswingMotorController(
 
     /** Switches the motor to a different operating mode. */
     suspend fun requestMode(mode: MotorMode): CommandResult {
-        val identity = requireType110() ?: return CommandResult.Rejected(GATE_REASON)
+        requireType110() ?: return CommandResult.Rejected(GATE_REASON)
         return send(MotorCommandFactory.mode(mode))
     }
 
@@ -208,16 +235,17 @@ class HaswingMotorController(
         heartbeatJob = null
     }
 
-    /** Sends the mission download request with the identifiers the motor expects. */
+    /**
+     * Sends the mission download request with the identifiers the motor expects.
+     *
+     * The frame uses the same sequence counter as every other outgoing frame.
+     */
     suspend fun requestRouteDownload(): CommandResult = try {
         transport.send(
-            codec.encode(
-                com.dentex.troller.mavlink.MissionRequestList(),
-                MavlinkHeader(
-                    sequence = nextSequence(),
-                    systemId = MavlinkHeader.MISSION_SYSTEM_ID,
-                    componentId = MavlinkHeader.MISSION_COMPONENT_ID,
-                ),
+            codec.encodeNext(
+                MissionRequestList(),
+                systemId = MavlinkHeader.MISSION_SYSTEM_ID,
+                componentId = MavlinkHeader.MISSION_COMPONENT_ID,
             ),
         )
         CommandResult.Sent
@@ -225,19 +253,35 @@ class HaswingMotorController(
         CommandResult.Failed(error.message ?: "Unable to request route")
     }
 
-    private var sequenceCounter: Int = 0
-
-    private fun nextSequence(): Int {
-        sequenceCounter = (sequenceCounter + 1) and 0xFF
-        return sequenceCounter
+    /**
+     * Closes the command gate when the motor goes quiet.
+     *
+     * The identity is dropped so that the next heartbeat has to confirm the profile again. The
+     * outgoing heartbeat keeps running so that the motor can come back.
+     */
+    private fun restartLinkWatchdog() {
+        linkWatchdogJob?.cancel()
+        linkWatchdogJob = scope.launch {
+            delay(LINK_TIMEOUT_MILLIS)
+            identityState.value = null
+            telemetryState.value = telemetryState.value.copy(connected = false)
+            commandGateState.value = CommandGateState.LINK_LOST
+        }
     }
 
-    private fun requireType110(): MotorIdentity? =
-        identityState.value?.takeIf { it.profile == MotorProfile.TYPE_110 }
+    private fun requireType110(): MotorIdentity? {
+        // Checked against the clock as well, so that no command slips through between the
+        // timeout expiring and the watchdog coroutine running.
+        if (clock() - lastMotorMessageMillis > LINK_TIMEOUT_MILLIS) return null
+        return identityState.value?.takeIf { it.profile == MotorProfile.TYPE_110 }
+    }
 
     companion object {
         /** Heartbeat period used by the Helmsman application. */
         const val HEARTBEAT_PERIOD_MILLIS: Long = 2000L
+
+        /** Silence after which the motor link is considered lost, as in Helmsman. */
+        const val LINK_TIMEOUT_MILLIS: Long = 5000L
 
         /** Reason reported when a command is refused because the motor is not identified. */
         const val GATE_REASON: String =
@@ -255,4 +299,7 @@ enum class CommandGateState {
 
     /** A different motor profile was detected; only the type 11 commands are available. */
     ALTERNATE_PROFILE,
+
+    /** The motor was identified but went quiet for [HaswingMotorController.LINK_TIMEOUT_MILLIS]. */
+    LINK_LOST,
 }

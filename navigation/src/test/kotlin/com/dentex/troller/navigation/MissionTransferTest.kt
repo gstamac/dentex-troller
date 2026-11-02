@@ -26,8 +26,8 @@ class MissionTransferTest {
     private fun TestScope.newTransfer(sent: MutableList<MavlinkMessage>): MissionTransfer =
         MissionTransfer(
             scope = backgroundScope,
-            sendMessage = { sent += it },
-            requestRouteList = { },
+            sendMessage = { sent += it; true },
+            requestRouteList = { true },
         )
 
     @Test
@@ -135,5 +135,100 @@ class MissionTransferTest {
         runCurrent()
 
         assertEquals(2, sent.filterIsInstance<MissionItem>().size)
+    }
+
+    @Test
+    fun theCountIsNotRepeatedOnceTheMotorAsksForAWaypoint() = runTest {
+        val sent = mutableListOf<MavlinkMessage>()
+        val transfer = newTransfer(sent)
+        transfer.startUpload(Route(listOf(Waypoint(45.0, 13.0), Waypoint(45.1, 13.1))))
+        runCurrent()
+
+        transfer.onMessage(MissionRequest(sequence = 0))
+        advanceTimeBy(MissionTransfer.UPLOAD_RETRY_DELAY_MILLIS * MissionTransfer.UPLOAD_COUNT_ATTEMPTS + 1)
+        runCurrent()
+
+        assertEquals(1, sent.filterIsInstance<MissionCount>().size)
+        assertEquals(MissionProgress.Phase.UPLOADING, transfer.progress.value.phase)
+    }
+
+    @Test
+    fun anUnansweredUploadFails() = runTest {
+        val sent = mutableListOf<MavlinkMessage>()
+        val transfer = newTransfer(sent)
+        transfer.startUpload(Route(listOf(Waypoint(45.0, 13.0))))
+
+        advanceTimeBy(MissionTransfer.UPLOAD_RETRY_DELAY_MILLIS * MissionTransfer.UPLOAD_COUNT_ATTEMPTS + 1)
+        runCurrent()
+
+        assertEquals(MissionTransfer.UPLOAD_COUNT_ATTEMPTS, sent.filterIsInstance<MissionCount>().size)
+        assertEquals(MissionProgress.Phase.FAILED, transfer.progress.value.phase)
+    }
+
+    @Test
+    fun aStalledWaypointFailsTheUploadAndStopsRepeating() = runTest {
+        val sent = mutableListOf<MavlinkMessage>()
+        val transfer = newTransfer(sent)
+        transfer.startUpload(Route(listOf(Waypoint(45.0, 13.0), Waypoint(45.1, 13.1))))
+        runCurrent()
+        transfer.onMessage(MissionRequest(sequence = 0))
+
+        advanceTimeBy(MissionTransfer.ITEM_RETRY_DELAY_MILLIS * MissionTransfer.ITEM_RETRY_ATTEMPTS + 1)
+        runCurrent()
+        assertEquals(MissionProgress.Phase.FAILED, transfer.progress.value.phase)
+
+        sent.clear()
+        advanceTimeBy(60_000)
+        runCurrent()
+        assertTrue(sent.isEmpty())
+    }
+
+    @Test
+    fun cancellingADownloadStopsTheWaypointRequests() = runTest {
+        val sent = mutableListOf<MavlinkMessage>()
+        val transfer = newTransfer(sent)
+        transfer.startDownload()
+        transfer.onMessage(MissionCount(count = 3))
+        runCurrent()
+        assertTrue(sent.any { it is MissionRequest })
+
+        transfer.cancel()
+        sent.clear()
+        advanceTimeBy(60_000)
+        runCurrent()
+
+        assertTrue(sent.isEmpty())
+        assertEquals(MissionProgress.Phase.IDLE, transfer.progress.value.phase)
+    }
+
+    @Test
+    fun aMissingWaypointFailsTheDownloadAndStopsTheRequests() = runTest {
+        val sent = mutableListOf<MavlinkMessage>()
+        val transfer = newTransfer(sent)
+        transfer.startDownload()
+        transfer.onMessage(MissionCount(count = 2))
+        runCurrent()
+
+        advanceTimeBy(MissionTransfer.DOWNLOAD_ITEM_TIMEOUT_MILLIS + 1)
+        runCurrent()
+        assertEquals(MissionProgress.Phase.FAILED, transfer.progress.value.phase)
+
+        sent.clear()
+        advanceTimeBy(60_000)
+        runCurrent()
+        assertTrue(sent.isEmpty())
+    }
+
+    @Test
+    fun aFailedSendFailsTheUpload() = runTest {
+        val transfer = MissionTransfer(
+            scope = backgroundScope,
+            sendMessage = { false },
+            requestRouteList = { false },
+        )
+        transfer.startUpload(Route(listOf(Waypoint(45.0, 13.0))))
+        runCurrent()
+
+        assertEquals(MissionProgress.Phase.FAILED, transfer.progress.value.phase)
     }
 }

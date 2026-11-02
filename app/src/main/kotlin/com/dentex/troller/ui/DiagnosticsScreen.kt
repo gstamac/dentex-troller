@@ -38,9 +38,8 @@ import com.dentex.troller.logging.LogEntry
  */
 @Composable
 fun DiagnosticsScreen(viewModel: MainViewModel) {
-    val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val entries by viewModel.logEntries.collectAsStateWithLifecycle()
     var showExport by remember { mutableStateOf(false) }
-    val entries = state.logEntries
 
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
         Text("Diagnostics", style = MaterialTheme.typography.headlineSmall)
@@ -68,7 +67,9 @@ fun DiagnosticsScreen(viewModel: MainViewModel) {
         } else {
             val visible = remember(entries) { entries.takeLast(300).reversed() }
             LazyColumn(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                items(visible, key = { "${it.timestampMillis}-${it.direction}-${it.label}" }) { entry ->
+                // No item keys: several records can share a millisecond, and duplicate keys crash
+                // a LazyColumn.
+                items(visible) { entry ->
                     LogRow(entry)
                 }
             }
@@ -76,7 +77,9 @@ fun DiagnosticsScreen(viewModel: MainViewModel) {
     }
 
     if (showExport) {
-        ExportDialog(text = viewModel.exportLog(), onDismiss = { showExport = false })
+        // Built once per opening, not on every recomposition.
+        val export = remember { viewModel.exportLog() }
+        ExportDialog(text = export, onDismiss = { showExport = false })
     }
 }
 

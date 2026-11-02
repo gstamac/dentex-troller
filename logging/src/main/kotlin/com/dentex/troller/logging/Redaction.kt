@@ -22,6 +22,23 @@ object Redaction {
         return "$head:$tail"
     }
 
+    private val macPattern = Regex("\\b[0-9A-Fa-f]{2}(?::[0-9A-Fa-f]{2}){5}\\b")
+
+    /** Masks every Bluetooth MAC address that appears in [text]. */
+    fun maskMacs(text: String): String = macPattern.replace(text) { maskMac(it.value) }
+
+    /**
+     * Redacts a log entry for export.
+     *
+     * Device addresses in event messages are masked. Raw payloads are kept unchanged, because
+     * they are what the export is compared against; they can still contain the motor position.
+     */
+    fun redactEntry(entry: LogEntry): LogEntry {
+        val message = entry.message ?: return entry
+        val masked = maskMacs(message)
+        return if (masked == message) entry else entry.copy(message = masked)
+    }
+
     /** Reduces a coordinate to a coarse grid cell so that exact position is not retained. */
     fun coarsenLatitude(latitude: Double): Double = roundTo(latitude, 2)
 

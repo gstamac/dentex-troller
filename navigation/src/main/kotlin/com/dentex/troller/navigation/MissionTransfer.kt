@@ -11,8 +11,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * Route transfer state machine.
@@ -21,37 +21,43 @@ import kotlinx.coroutines.launch
  *
  * **Upload**
  *  1. The phone sends `MISSION_COUNT` with the number of waypoints. It repeats this up to
- *     [UPLOAD_COUNT_ATTEMPTS] times with [UPLOAD_RETRY_DELAY_MILLIS] in between.
+ *     [UPLOAD_COUNT_ATTEMPTS] times with [UPLOAD_RETRY_DELAY_MILLIS] in between, and stops as
+ *     soon as the motor asks for the first waypoint. Without an answer the upload fails.
  *  2. The motor answers with `MISSION_REQUEST` for the waypoint it wants. The phone answers with
  *     `MISSION_ITEM` and repeats that answer every [ITEM_RETRY_DELAY_MILLIS] until the motor
- *     moves on.
+ *     moves on, at most [ITEM_RETRY_ATTEMPTS] times.
  *  3. The motor finishes with `MISSION_ACK`.
  *
  * **Download**
  *  1. The phone sends `MISSION_REQUEST_LIST` every [DOWNLOAD_LIST_POLL_MILLIS] until the motor
- *     answers with `MISSION_COUNT`. The whole download must finish within
- *     [DOWNLOAD_TIMEOUT_MILLIS].
+ *     answers with `MISSION_COUNT`, for at most [DOWNLOAD_TIMEOUT_MILLIS].
  *  2. The phone then requests the waypoints one by one with `MISSION_REQUEST`, polling every
  *     [DOWNLOAD_ITEM_POLL_MILLIS]. Each individual waypoint must arrive within
  *     [DOWNLOAD_ITEM_TIMEOUT_MILLIS].
+ *
+ * Every background loop belongs to the transfer that started it: cancelling, failing or
+ * completing a transfer stops all of them, so nothing keeps talking to the motor afterwards.
  */
 class MissionTransfer(
     private val scope: CoroutineScope,
-    private val sendMessage: suspend (MavlinkMessage) -> Unit,
-    private val requestRouteList: suspend () -> Unit,
+    /** Sends a message; returns false when the message could not be handed to the link. */
+    private val sendMessage: suspend (MavlinkMessage) -> Boolean,
+    /** Sends `MISSION_REQUEST_LIST`; returns false when it could not be handed to the link. */
+    private val requestRouteList: suspend () -> Boolean,
 ) {
 
     private val progressState = MutableStateFlow(MissionProgress(MissionProgress.Phase.IDLE))
     private val downloaded = mutableListOf<Waypoint>()
 
-    private var uploadJob: Job? = null
-    private var downloadJob: Job? = null
-    private var itemRetryJob: Job? = null
-    private var downloadWatchdogJob: Job? = null
-    private var pendingUploadSequence: Int = -1
+    /** Upload `MISSION_COUNT` loop, or download list/item loop. */
+    private var transferJob: Job? = null
+
+    /** Repeats the answer for the waypoint the motor asked for during an upload. */
+    private var itemJob: Job? = null
+
     private var pendingRoute: Route? = null
+    private var uploadRequestReceived: Boolean = false
     private var expectedCount: Int = -1
-    private var requestedSequence: Int = -1
 
     /** Progress of the current transfer. */
     val progress: StateFlow<MissionProgress> = progressState.asStateFlow()
@@ -74,17 +80,21 @@ class MissionTransfer(
             )
             return false
         }
-        uploadJob?.cancel()
-        itemRetryJob?.cancel()
-        pendingUploadSequence = -1
+        stopJobs()
         pendingRoute = route
+        uploadRequestReceived = false
         progressState.value = MissionProgress(MissionProgress.Phase.UPLOADING, total = route.size)
-        uploadJob = scope.launch {
-            var attempt = 0
-            while (attempt < UPLOAD_COUNT_ATTEMPTS && isActive) {
-                sendMessage(MissionCount(count = route.size))
-                attempt++
+        transferJob = scope.launch {
+            repeat(UPLOAD_COUNT_ATTEMPTS) {
+                if (uploadRequestReceived) return@launch
+                if (!sendMessage(MissionCount(count = route.size))) {
+                    fail("Unable to send the route size to the motor")
+                    return@launch
+                }
                 delay(UPLOAD_RETRY_DELAY_MILLIS)
+            }
+            if (!uploadRequestReceived) {
+                fail("The motor did not answer the route upload")
             }
         }
         return true
@@ -92,21 +102,23 @@ class MissionTransfer(
 
     /** Starts a download of the route that is stored on the motor. */
     fun startDownload(): Boolean {
-        downloadJob?.cancel()
-        downloadWatchdogJob?.cancel()
+        stopJobs()
+        pendingRoute = null
         downloaded.clear()
         expectedCount = -1
-        requestedSequence = -1
         progressState.value = MissionProgress(MissionProgress.Phase.DOWNLOADING)
-        downloadJob = scope.launch {
-            val deadline = System.currentTimeMillis() + DOWNLOAD_TIMEOUT_MILLIS
-            while (isActive && expectedCount < 0) {
-                if (System.currentTimeMillis() > deadline) {
-                    fail("The motor did not answer the route request within ${DOWNLOAD_TIMEOUT_MILLIS} ms")
-                    return@launch
+        transferJob = scope.launch {
+            val answered = withTimeoutOrNull(DOWNLOAD_TIMEOUT_MILLIS) {
+                while (expectedCount < 0) {
+                    if (!requestRouteList()) return@withTimeoutOrNull false
+                    delay(DOWNLOAD_LIST_POLL_MILLIS)
                 }
-                requestRouteList()
-                delay(DOWNLOAD_LIST_POLL_MILLIS)
+                true
+            }
+            when (answered) {
+                null -> fail("The motor did not answer the route request within $DOWNLOAD_TIMEOUT_MILLIS ms")
+                false -> fail("Unable to send the route request to the motor")
+                true -> Unit
             }
         }
         return true
@@ -114,15 +126,8 @@ class MissionTransfer(
 
     /** Cancels any running transfer. */
     fun cancel() {
-        uploadJob?.cancel()
-        uploadJob = null
-        downloadJob?.cancel()
-        downloadJob = null
-        itemRetryJob?.cancel()
-        itemRetryJob = null
-        downloadWatchdogJob?.cancel()
-        downloadWatchdogJob = null
-        pendingUploadSequence = -1
+        stopJobs()
+        pendingRoute = null
         progressState.value = MissionProgress(MissionProgress.Phase.IDLE)
     }
 
@@ -149,7 +154,7 @@ class MissionTransfer(
             }
 
             is MissionAck -> {
-                handleAcknowledgement()
+                handleAcknowledgement(message)
                 return true
             }
 
@@ -158,48 +163,44 @@ class MissionTransfer(
     }
 
     private fun handleRequest(sequence: Int) {
+        if (progressState.value.phase != MissionProgress.Phase.UPLOADING) return
         val route = pendingRoute ?: return
-        if (sequence >= route.size) return
-        pendingUploadSequence = sequence
+        if (sequence !in 0 until route.size) return
+
+        // The motor has accepted the size; repeating MISSION_COUNT now could restart its transfer.
+        uploadRequestReceived = true
+        transferJob?.cancel()
+        transferJob = null
+
         val waypoint = route.waypoints[sequence]
-        sendWaypoint(route, sequence, waypoint)
-        scheduleItemRetry(route, sequence, waypoint)
-    }
-
-    private fun sendWaypoint(route: Route, sequence: Int, waypoint: Waypoint) {
-        scope.launch {
-            sendMessage(
-                MissionItem(
-                    x = waypoint.latitude.toFloat(),
-                    y = waypoint.longitude.toFloat(),
-                    sequence = sequence,
-                    targetSystem = MISSION_TARGET_SYSTEM,
-                ),
-            )
-            progressState.value = progressState.value.copy(
-                total = route.size,
-                completed = sequence,
-            )
-        }
-    }
-
-    /**
-     * Repeats the answer for the requested waypoint until the motor asks for the next one.
-     */
-    private fun scheduleItemRetry(route: Route, sequence: Int, waypoint: Waypoint) {
-        itemRetryJob?.cancel()
-        itemRetryJob = scope.launch {
-            while (isActive && pendingUploadSequence == sequence) {
+        val item = MissionItem(
+            x = waypoint.latitude.toFloat(),
+            y = waypoint.longitude.toFloat(),
+            sequence = sequence,
+            targetSystem = MISSION_TARGET_SYSTEM,
+        )
+        itemJob?.cancel()
+        itemJob = scope.launch {
+            repeat(ITEM_RETRY_ATTEMPTS) {
+                if (!sendMessage(item)) {
+                    fail("Unable to send waypoint ${sequence + 1} to the motor")
+                    return@launch
+                }
+                progressState.value = progressState.value.copy(total = route.size, completed = sequence)
                 delay(ITEM_RETRY_DELAY_MILLIS)
-                if (pendingUploadSequence != sequence) break
-                sendWaypoint(route, sequence, waypoint)
             }
+            fail("The motor stopped answering after waypoint ${sequence + 1}")
         }
     }
 
     private fun handleCount(count: Int) {
         if (progressState.value.phase != MissionProgress.Phase.DOWNLOADING) return
+        // The list request is polled, so the motor may answer it more than once.
+        if (expectedCount >= 0) return
+        transferJob?.cancel()
+        transferJob = null
         if (count <= 0) {
+            expectedCount = 0
             progressState.value = MissionProgress(
                 MissionProgress.Phase.COMPLETE,
                 total = 0,
@@ -209,28 +210,43 @@ class MissionTransfer(
             return
         }
         expectedCount = count
-        scope.launch {
-            var sequence = 0
-            while (isActive && sequence < expectedCount) {
-                sendMessage(MissionRequest(sequence = sequence))
-                delay(DOWNLOAD_ITEM_POLL_MILLIS)
-                sequence = requestedSequence + 1
+        progressState.value = progressState.value.copy(total = count, completed = 0)
+        transferJob = scope.launch {
+            while (downloaded.size < expectedCount) {
+                val sequence = downloaded.size
+                val result = withTimeoutOrNull(DOWNLOAD_ITEM_TIMEOUT_MILLIS) {
+                    while (downloaded.size == sequence) {
+                        if (!sendMessage(MissionRequest(sequence = sequence))) return@withTimeoutOrNull false
+                        delay(DOWNLOAD_ITEM_POLL_MILLIS)
+                    }
+                    true
+                }
+                when (result) {
+                    null -> {
+                        fail("Waypoint ${sequence + 1} did not arrive within $DOWNLOAD_ITEM_TIMEOUT_MILLIS ms")
+                        return@launch
+                    }
+                    false -> {
+                        fail("Unable to request waypoint ${sequence + 1} from the motor")
+                        return@launch
+                    }
+                    true -> Unit
+                }
             }
         }
     }
 
     private fun handleItem(item: MissionItem) {
         if (progressState.value.phase != MissionProgress.Phase.DOWNLOADING) return
+        if (expectedCount <= 0) return
         if (item.sequence != downloaded.size) return
         downloaded.add(Waypoint(item.x.toDouble(), item.y.toDouble()))
-        requestedSequence = item.sequence
         progressState.value = progressState.value.copy(
             total = expectedCount,
             completed = downloaded.size,
         )
-        scheduleDownloadWatchdog()
-        if (expectedCount > 0 && downloaded.size >= expectedCount) {
-            downloadWatchdogJob?.cancel()
+        if (downloaded.size >= expectedCount) {
+            stopJobs()
             progressState.value = progressState.value.copy(
                 phase = MissionProgress.Phase.COMPLETE,
                 message = "Route downloaded",
@@ -238,27 +254,20 @@ class MissionTransfer(
         }
     }
 
-    /**
-     * Re-requests the current waypoint when the motor does not answer in time.
-     */
-    private fun scheduleDownloadWatchdog() {
-        downloadWatchdogJob?.cancel()
-        downloadWatchdogJob = scope.launch {
-            delay(DOWNLOAD_ITEM_TIMEOUT_MILLIS)
-            if (progressState.value.phase != MissionProgress.Phase.DOWNLOADING) return@launch
-            val sequence = downloaded.size
-            if (sequence >= expectedCount) return@launch
-            sendMessage(MissionRequest(sequence = sequence))
-        }
-    }
-
-    private fun handleAcknowledgement() {
+    private fun handleAcknowledgement(ack: MissionAck) {
         if (progressState.value.phase != MissionProgress.Phase.UPLOADING) return
-        itemRetryJob?.cancel()
-        itemRetryJob = null
+        stopJobs()
+        val total = pendingRoute?.size ?: progressState.value.total
+        pendingRoute = null
         progressState.value = progressState.value.copy(
             phase = MissionProgress.Phase.COMPLETE,
-            message = "Route uploaded",
+            total = total,
+            completed = total,
+            message = if (ack.type == MissionAck.MAV_MISSION_ACCEPTED) {
+                "Route uploaded"
+            } else {
+                "Route uploaded (acknowledgement type ${ack.type})"
+            },
         )
     }
 
@@ -267,6 +276,15 @@ class MissionTransfer(
             phase = MissionProgress.Phase.FAILED,
             message = message,
         )
+        pendingRoute = null
+        stopJobs()
+    }
+
+    private fun stopJobs() {
+        transferJob?.cancel()
+        transferJob = null
+        itemJob?.cancel()
+        itemJob = null
     }
 
     companion object {
@@ -279,13 +297,16 @@ class MissionTransfer(
         /** Delay after which an unanswered waypoint is sent again. */
         const val ITEM_RETRY_DELAY_MILLIS: Long = 3000L
 
+        /** How often an unanswered waypoint is sent before the upload fails. */
+        const val ITEM_RETRY_ATTEMPTS: Int = 5
+
         /** Interval of the `MISSION_REQUEST_LIST` poll during a download. */
         const val DOWNLOAD_LIST_POLL_MILLIS: Long = 150L
 
         /** Interval of the `MISSION_REQUEST` poll during a download. */
         const val DOWNLOAD_ITEM_POLL_MILLIS: Long = 500L
 
-        /** Overall timeout of a route download. */
+        /** Time the motor has to answer the route request with `MISSION_COUNT`. */
         const val DOWNLOAD_TIMEOUT_MILLIS: Long = 25000L
 
         /** Timeout for a single waypoint during a download. */
