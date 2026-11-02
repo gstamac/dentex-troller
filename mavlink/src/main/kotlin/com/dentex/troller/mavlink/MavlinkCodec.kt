@@ -75,12 +75,13 @@ class HelmsmanMavlinkCodec(
      * behaviour of a MAVLink v1 sender.
      */
     fun encodeNext(message: MavlinkMessage, systemId: Int = MavlinkHeader.DEFAULT_SYSTEM_ID, componentId: Int = MavlinkHeader.DEFAULT_COMPONENT_ID): ByteArray {
-        val header = MavlinkHeader(
-            sequence = sequence and 0xFF,
-            systemId = systemId,
-            componentId = componentId,
-        )
-        sequence = (sequence + 1) and 0xFF
+        val header = synchronized(this) {
+            MavlinkHeader(
+                sequence = sequence and 0xFF,
+                systemId = systemId,
+                componentId = componentId,
+            ).also { sequence = (sequence + 1) and 0xFF }
+        }
         return encode(message, header)
     }
 }

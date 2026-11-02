@@ -56,6 +56,10 @@ fun ControlsScreen(viewModel: MainViewModel) {
                 CommandGateState.ALTERNATE_PROFILE ->
                     "A different motor profile answered. The type 110 commands are blocked."
 
+                CommandGateState.LINK_LOST ->
+                    "The motor stopped answering. Propulsion commands stay blocked until its " +
+                    "next heartbeat. STOP is still sent."
+
                 CommandGateState.UNVERIFIED ->
                     "Waiting for a heartbeat. Propulsion commands stay blocked until the motor " +
                     "profile is confirmed."

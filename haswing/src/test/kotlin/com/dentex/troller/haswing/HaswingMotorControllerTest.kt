@@ -5,7 +5,10 @@ import com.dentex.troller.mavlink.CommandLong
 import com.dentex.troller.mavlink.GlobalPositionInt
 import com.dentex.troller.mavlink.Heartbeat
 import com.dentex.troller.mavlink.RawImu
+import com.dentex.troller.mavlink.SysStatus
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -80,6 +83,82 @@ class HaswingMotorControllerTest {
         assertNull(motor.identity.value)
         assertEquals(CommandGateState.UNVERIFIED, motor.commandGate.value)
         assertTrue(motor.requestMotorOn() is CommandResult.Rejected)
+    }
+
+    @Test
+    fun aSilentMotorClosesTheGate() = runTest {
+        val transport = RecordingTransport()
+        val motor = HaswingMotorController(
+            transport,
+            backgroundScope,
+            clock = { testScheduler.currentTime },
+            autoHeartbeat = false,
+        )
+        motor.onMessage(Heartbeat(type = 110))
+        assertEquals(CommandGateState.READY, motor.commandGate.value)
+
+        advanceTimeBy(HaswingMotorController.LINK_TIMEOUT_MILLIS + 1)
+        runCurrent()
+
+        assertEquals(CommandGateState.LINK_LOST, motor.commandGate.value)
+        assertNull(motor.identity.value)
+        assertTrue(motor.requestMotorOn() is CommandResult.Rejected)
+        assertTrue(motor.requestStop() is CommandResult.Sent)
+
+        // The next heartbeat identifies the motor again.
+        motor.onMessage(Heartbeat(type = 110))
+        assertEquals(CommandGateState.READY, motor.commandGate.value)
+    }
+
+    @Test
+    fun telemetryKeepsTheLinkAliveButSysStatusDoesNot() = runTest {
+        val transport = RecordingTransport()
+        val motor = HaswingMotorController(
+            transport,
+            backgroundScope,
+            clock = { testScheduler.currentTime },
+            autoHeartbeat = false,
+        )
+        motor.onMessage(Heartbeat(type = 110))
+
+        advanceTimeBy(HaswingMotorController.LINK_TIMEOUT_MILLIS - 1000)
+        motor.onMessage(RawImu())
+        advanceTimeBy(HaswingMotorController.LINK_TIMEOUT_MILLIS - 1000)
+        runCurrent()
+        assertEquals(CommandGateState.READY, motor.commandGate.value)
+
+        motor.onMessage(SysStatus())
+        advanceTimeBy(1001)
+        runCurrent()
+        assertEquals(CommandGateState.LINK_LOST, motor.commandGate.value)
+    }
+
+    @Test
+    fun theHeartbeatStartsAsSoonAsTheLinkIsReady() = runTest {
+        val transport = RecordingTransport()
+        val motor = HaswingMotorController(transport, backgroundScope, clock = { 0L })
+
+        motor.onConnected()
+        runCurrent()
+
+        assertEquals(1, transport.sent.size)
+        assertEquals(Heartbeat.MESSAGE_ID, transport.sent.single()[5].toInt() and 0xFF)
+    }
+
+    @Test
+    fun theRouteRequestSharesTheSequenceCounter() = runTest {
+        val transport = RecordingTransport()
+        val motor = HaswingMotorController(transport, this, clock = { 0L }, autoHeartbeat = false)
+
+        motor.requestStop()
+        motor.requestRouteDownload()
+        motor.requestStop()
+
+        val sequences = transport.sent.map { it[2].toInt() and 0xFF }
+        assertEquals(listOf(0, 1, 2), sequences)
+        // The route request keeps its special identifiers.
+        assertEquals(106, transport.sent[1][3].toInt() and 0xFF)
+        assertEquals(200, transport.sent[1][4].toInt() and 0xFF)
     }
 }
 

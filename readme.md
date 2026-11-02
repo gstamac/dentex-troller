@@ -158,6 +158,11 @@ with `BleUuids` and adjust the UUIDs if the remote uses a different service.
 The command gate stays closed until a heartbeat with a valid checksum was received from a type 110
 motor. The **Log** tab shows the raw frames, so a checksum failure is visible there.
 
+The gate also closes when the motor has sent nothing (apart from `SYS_STATUS`) for 5 seconds,
+the same rule the Helmsman application uses to decide that the motor is offline. It reopens with
+the next heartbeat. STOP is always sent regardless of the gate, but no command is sent while the
+Bluetooth link itself is down; the app reports that instead of pretending the command went out.
+
 ## Gradle JVM troubleshooting
 
 Gradle 9.6.1 must itself run on JDK 17 or later. Setting `sourceCompatibility` and

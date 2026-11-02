@@ -12,6 +12,7 @@ import android.bluetooth.BluetoothProfile
 import android.content.Context
 import android.os.Build
 import com.dentex.troller.logging.DiagnosticLog
+import com.dentex.troller.logging.HexDump
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -43,16 +44,27 @@ class AndroidBleTransport(
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
 ) : BleTransport {
 
-    private val incoming = MutableSharedFlow<ByteArray>(extraBufferCapacity = 256)
+    private val incoming = MutableSharedFlow<ByteArray>(extraBufferCapacity = INCOMING_BUFFER_CAPACITY)
     private val eventFlow = MutableSharedFlow<BleEvent>(extraBufferCapacity = 64)
     private val state = MutableStateFlow<ConnectionState>(ConnectionState.Disconnected)
 
     private val writeQueue = Channel<ByteArray>(capacity = WRITE_QUEUE_CAPACITY)
+
+    // These fields are written on the Binder thread of the GATT callbacks and read by the writer
+    // coroutine, so they must be visible across threads.
+    @Volatile
     private var writerJob: Job? = null
 
+    @Volatile
     private var gatt: BluetoothGatt? = null
+
+    @Volatile
     private var txCharacteristic: BluetoothGattCharacteristic? = null
+
+    @Volatile
     private var rxCharacteristic: BluetoothGattCharacteristic? = null
+
+    @Volatile
     private var pendingWrite: CompletableDeferred<Boolean>? = null
 
     override val incomingBytes: Flow<ByteArray> = incoming.asSharedFlow()
@@ -73,21 +85,51 @@ class AndroidBleTransport(
         gatt = device.connectGatt(context, false, gattCallback, BluetoothDevice.TRANSPORT_LE)
     }
 
+    /**
+     * Queues [bytes] for delivery.
+     *
+     * @throws IllegalStateException when the link is not ready or the queue is full, so that the
+     *   caller can tell the operator that the command did not go out.
+     */
     override suspend fun write(bytes: ByteArray) {
         if (bytes.isEmpty()) return
+        if (state.value !is ConnectionState.Ready) {
+            log.event(TAG, "Not connected, dropped ${bytes.size} bytes")
+            throw IllegalStateException("Not connected to the remote")
+        }
         val result = writeQueue.trySend(bytes.copyOf())
         if (result.isFailure) {
             log.event(TAG, "Write queue is full, dropped ${bytes.size} bytes")
             eventFlow.tryEmit(BleEvent.WriteFailed("Write queue is full"))
+            throw IllegalStateException("Write queue is full")
         }
     }
 
-    @SuppressLint("MissingPermission")
     override suspend fun disconnect() {
+        release()
+    }
+
+    /**
+     * Disconnects and releases the GATT client without suspending.
+     *
+     * Safe to call from `onCleared`, where no coroutine can be launched any more.
+     */
+    fun release() {
         writerJob?.cancel()
         writerJob = null
-        // Drop everything that is still queued so that a command is never replayed after a
-        // reconnect.
+        closeLink()
+        if (state.value != ConnectionState.Disconnected) {
+            state.value = ConnectionState.Disconnected
+        }
+    }
+
+    /**
+     * Drops queued writes and closes the GATT client.
+     *
+     * Everything still queued is discarded so that a command is never replayed after a reconnect.
+     */
+    @SuppressLint("MissingPermission")
+    private fun closeLink() {
         while (writeQueue.tryReceive().isSuccess) {
             // Keep draining.
         }
@@ -100,9 +142,6 @@ class AndroidBleTransport(
         rxCharacteristic = null
         pendingWrite?.complete(false)
         pendingWrite = null
-        if (state.value != ConnectionState.Disconnected) {
-            state.value = ConnectionState.Disconnected
-        }
     }
 
     private fun startWriter() {
@@ -123,11 +162,12 @@ class AndroidBleTransport(
         }
         for (chunk in WriteChunker.split(payload)) {
             val ok = writeChunk(client, characteristic, chunk)
-            log.tx(TAG, chunk)
             if (!ok) {
+                log.event(TAG, "Write of ${chunk.size} bytes failed: ${HexDump.toSpacedHex(chunk)}")
                 eventFlow.tryEmit(BleEvent.WriteFailed("Write of ${chunk.size} bytes failed"))
                 return
             }
+            log.tx(TAG, chunk)
         }
     }
 
@@ -196,10 +236,13 @@ class AndroidBleTransport(
 
                 BluetoothProfile.STATE_DISCONNECTED -> {
                     log.event(TAG, "GATT disconnected (status=$status)")
-                    txCharacteristic = null
-                    rxCharacteristic = null
-                    pendingWrite?.complete(false)
-                    pendingWrite = null
+                    val current = this@AndroidBleTransport.gatt
+                    if (current != null && gatt !== current) {
+                        // A late callback from a client that was already replaced.
+                        runCatching { gatt.close() }
+                        return
+                    }
+                    closeLink()
                     state.value = ConnectionState.Disconnected
                     eventFlow.tryEmit(BleEvent.Disconnected("status=$status"))
                 }
@@ -209,6 +252,7 @@ class AndroidBleTransport(
         @SuppressLint("MissingPermission")
         override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
             if (status != BluetoothGatt.GATT_SUCCESS) {
+                closeLink()
                 fail("Service discovery failed with status $status")
                 return
             }
@@ -236,6 +280,7 @@ class AndroidBleTransport(
                     }
                     "${serviceInfo.uuid} [$characteristics]"
                 }
+                closeLink()
                 fail("The expected characteristics were not found (tx=${tx != null}, rx=${rx != null}). " +
                     "The remote exposes: $found")
                 return
@@ -277,8 +322,7 @@ class AndroidBleTransport(
             characteristic: BluetoothGattCharacteristic,
             value: ByteArray,
         ) {
-            log.rx(TAG, value)
-            incoming.tryEmit(value)
+            deliver(value)
         }
 
         @Deprecated("Deprecated in Java")
@@ -289,8 +333,16 @@ class AndroidBleTransport(
         ) {
             @Suppress("DEPRECATION")
             val value = characteristic.value ?: return
-            log.rx(TAG, value)
-            incoming.tryEmit(value)
+            deliver(value.copyOf())
+        }
+    }
+
+    private fun deliver(value: ByteArray) {
+        log.rx(TAG, value)
+        if (!incoming.tryEmit(value)) {
+            // A lost chunk breaks the frame it belongs to; the parser resynchronises on the next
+            // start byte, but the loss must be visible in the log.
+            log.event(TAG, "Receive buffer full, dropped ${value.size} bytes")
         }
     }
 
@@ -342,6 +394,9 @@ class AndroidBleTransport(
 
         /** Maximum number of queued outbound messages, mirroring the Helmsman queue. */
         const val WRITE_QUEUE_CAPACITY = 20
+
+        /** Notifications buffered for the MAVLink parser before chunks are dropped. */
+        const val INCOMING_BUFFER_CAPACITY = 1024
 
         /** Bytes per GATT write. */
         const val WRITE_CHUNK_SIZE: Int = WriteChunker.CHUNK_SIZE
