@@ -1,6 +1,7 @@
 package com.dentex.troller
 
 import android.app.Application
+import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.dentex.troller.ble.AndroidBleTransport
@@ -8,6 +9,7 @@ import com.dentex.troller.ble.BleEvent
 import com.dentex.troller.ble.BleScanResult
 import com.dentex.troller.ble.BleScanner
 import com.dentex.troller.ble.ConnectionState
+import com.dentex.troller.chart.ChartStore
 import com.dentex.troller.haswing.CommandGateState
 import com.dentex.troller.haswing.CommandResult
 import com.dentex.troller.haswing.HaswingMotorController
@@ -36,6 +38,7 @@ import kotlinx.coroutines.flow.sample
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.util.Locale
 
 /** State rendered by the UI. */
 data class MainUiState(
@@ -95,6 +98,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         .onStart { emit(log.changes.value) }
         .map { log.entries }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    private val chartStore = ChartStore(application)
+    private val _chartFile = MutableStateFlow(chartStore.current())
+
+    /** The installed offline chart, or `null` when none is installed yet. */
+    val chartFile: StateFlow<ChartStore.InstalledChart?> = _chartFile.asStateFlow()
+
+    private val _routeDraft = MutableStateFlow<List<Waypoint>>(emptyList())
+
+    /**
+     * The route being edited, shared by the route screen and the chart.
+     *
+     * Editing it never talks to the motor; only [uploadRoute] does.
+     */
+    val routeDraft: StateFlow<List<Waypoint>> = _routeDraft.asStateFlow()
 
     private var scanJob: Job? = null
 
@@ -281,6 +299,42 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val route = Route(waypoints)
         if (!mission.startUpload(route)) {
             notifyUser("The route is empty")
+        }
+    }
+
+    /** Appends a waypoint to the route being edited. */
+    fun addWaypoint(waypoint: Waypoint) {
+        _routeDraft.update { it + waypoint }
+    }
+
+    /** Removes the last waypoint of the route being edited. */
+    fun removeLastWaypoint() {
+        _routeDraft.update { it.dropLast(1) }
+    }
+
+    /** Clears the route being edited. */
+    fun clearRoute() {
+        _routeDraft.value = emptyList()
+    }
+
+    /** Looks for the chart file again, for example after it was copied with adb. */
+    fun refreshChart() {
+        _chartFile.value = chartStore.current()
+    }
+
+    /** Where the chart file is expected, for the instructions on the chart screen. */
+    val chartPath: String get() = chartStore.file.absolutePath
+
+    /** Imports a chart file picked from the phone's storage. */
+    fun importChart(uri: Uri) {
+        viewModelScope.launch {
+            when (val result = chartStore.import(uri)) {
+                is ChartStore.ImportResult.Imported -> {
+                    _chartFile.value = chartStore.current()
+                    notifyUser(String.format(Locale.US, "Chart imported (%.1f MB)", result.bytes / 1_048_576.0))
+                }
+                is ChartStore.ImportResult.Failed -> notifyUser(result.reason)
+            }
         }
     }
 

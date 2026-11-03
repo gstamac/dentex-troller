@@ -81,10 +81,10 @@ AGP 9 compiles the Kotlin sources of the Android modules with its built-in Kotli
 ## How to install it on the phone
 
 ```bash
-adb pair 192.168.88.101:43029
+adb pair 192.168.88.101:33977
 ```
 ```bash
-adb connect 192.168.88.101:43077
+adb connect 192.168.88.101:38235
 ```
 
 ```bash
@@ -126,12 +126,47 @@ within range before it answers.
    GATT service in its advertisement packet.
 2. **Dashboard** — shows the motor profile, the telemetry and the age of the last update. The
    profile is only reported after a heartbeat with a valid checksum was received.
-3. **Controls** — propulsion commands stay disabled until a type 110 motor was confirmed. The stop
+3. **Chart** — an offline depth chart of the Adriatic with the boat position and heading from the
+   motor telemetry. Tap the chart for the depth, long-press to add a waypoint to the route. The
+   chart never sends anything to the motor. It needs the chart file, see
+   [Offline chart](#offline-chart).
+4. **Controls** — propulsion commands stay disabled until a type 110 motor was confirmed. The stop
    command is always available from the top bar. Switching to a mode asks for a confirmation.
-4. **Route** — uploads and downloads waypoints. Uploading a route never starts the motor.
-5. **Log** — shows the raw traffic in both directions and exports it as text so that it can be
+5. **Route** — uploads and downloads waypoints. Uploading a route never starts the motor.
+6. **Log** — shows the raw traffic in both directions and exports it as text so that it can be
    compared with a capture from the Helmsman application. Every device seen during a scan is
    logged there as well, with its name, address, signal strength and advertised services.
+
+## Offline chart
+
+The chart combines two open data sets and is **not for navigation**:
+
+- Depths: [EMODnet Bathymetry DTM 2024](https://emodnet.ec.europa.eu/en/bathymetry), CC BY 4.0.
+  The grid is 1/960° (about 115 m), so near-shore contours are approximate.
+- Shoreline: [OpenStreetMap land polygons](https://osmdata.openstreetmap.de/data/land-polygons.html),
+  © OpenStreetMap contributors, ODbL.
+
+The chart is a separate file, `adriatic.pmtiles`, and is not part of the APK. Build it with Docker:
+
+```bash
+docker build -t dentex/chart-builder tools/charts
+docker run --rm -v "$PWD/tools/charts/build/data:/data" -v "$PWD/tools/charts/build:/out" dentex/chart-builder
+```
+
+The first run downloads about 1.1 GB (the EMODnet grid and the land polygons) into
+`tools/charts/build/data` and reuses it afterwards. The result is
+`tools/charts/build/adriatic.pmtiles`. Then install it on the phone in one of two ways:
+
+- Copy it with adb:
+
+  ```bash
+  adb push tools/charts/build/adriatic.pmtiles /sdcard/Android/data/com.dentex.troller/files/charts/adriatic.pmtiles
+  ```
+
+- Copy it to the phone in any way, open the **Chart** tab and tap **Import chart file**.
+
+The area, the contour depths and the zoom levels are set at the top of
+[build-chart.sh](tools/charts/build-chart.sh). The depths must match `ChartStyle.DEPTHS` in the app.
 
 ## Troubleshooting
 

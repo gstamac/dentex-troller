@@ -1,0 +1,99 @@
+package com.dentex.troller.chart
+
+import com.dentex.troller.navigation.Waypoint
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+class PmtilesHeaderTest {
+
+    private fun header(magic: String, version: Int): ByteArray =
+        ByteArray(PmtilesHeader.LENGTH).also { bytes ->
+            magic.toByteArray(Charsets.US_ASCII).copyInto(bytes)
+            bytes[magic.length] = version.toByte()
+        }
+
+    @Test
+    fun acceptsAVersion3Archive() {
+        assertTrue(PmtilesHeader.isVersion3(header("PMTiles", 3)))
+    }
+
+    @Test
+    fun rejectsOtherVersionsAndOtherFiles() {
+        assertFalse(PmtilesHeader.isVersion3(header("PMTiles", 2)))
+        assertFalse(PmtilesHeader.isVersion3(header("SQLite ", 3)))
+        assertFalse(PmtilesHeader.isVersion3(ByteArray(4)))
+    }
+}
+
+class ChartStyleTest {
+
+    @Test
+    fun theStyleReadsTheLocalChartFile() {
+        val json = ChartStyle.json("/storage/emulated/0/Android/data/com.dentex.troller/files/charts/adriatic.pmtiles", night = false)
+        assertTrue(json.contains("\"pmtiles://file:///storage/emulated/0/Android/data/com.dentex.troller/files/charts/adriatic.pmtiles\""))
+        for (layer in listOf("depth_area", "depth_contour", "land")) {
+            assertTrue("missing source layer $layer", json.contains("\"source-layer\": \"$layer\""))
+        }
+    }
+
+    @Test
+    fun aQuoteInThePathCannotBreakTheStyle() {
+        val json = ChartStyle.json("/a\"b", night = true)
+        assertTrue(json.contains("\"pmtiles://file:///a\\\"b\""))
+    }
+
+    @Test
+    fun everyBandHasItsOwnRange() {
+        assertEquals("0–2 m", ChartStyle.bandLabel(0))
+        assertEquals("30–40 m", ChartStyle.bandLabel(30))
+        assertEquals("more than 1250 m", ChartStyle.bandLabel(1250))
+    }
+
+    @Test
+    fun shallowBandsAreTintedAndDeepWaterIsPlain() {
+        assertEquals(ChartStyle.DAY.water[0], ChartStyle.bandColor(ChartStyle.DAY, 0))
+        assertEquals(ChartStyle.DAY.water[7], ChartStyle.bandColor(ChartStyle.DAY, 30))
+        assertEquals(ChartStyle.DAY.deep, ChartStyle.bandColor(ChartStyle.DAY, 40))
+        assertEquals(ChartStyle.DAY.deep, ChartStyle.bandColor(ChartStyle.DAY, 500))
+    }
+
+    @Test
+    fun positionsAreWrittenInDegreesAndMinutes() {
+        assertEquals("44°13.214′N  14°47.731′E", ChartStyle.formatPosition(44.22023319537834, 14.795524186248247))
+    }
+}
+
+class ChartGeoJsonTest {
+
+    @Test
+    fun anUnknownPositionDrawsNoBoat() {
+        assertTrue(ChartGeoJson.boat(null, 14.8, 90f, stale = false).contains("\"features\":[]"))
+    }
+
+    @Test
+    fun theBoatIsLongitudeFirstAndOnlyCarriesAReportedHeading() {
+        val withHeading = ChartGeoJson.boat(44.2, 14.8, 87.25f, stale = false)
+        assertTrue(withHeading.contains("[14.8000000,44.2000000]"))
+        assertTrue(withHeading.contains("\"heading\":87.3") || withHeading.contains("\"heading\":87.2"))
+
+        val withoutHeading = ChartGeoJson.boat(44.2, 14.8, null, stale = true)
+        assertFalse(withoutHeading.contains("heading"))
+        assertTrue(withoutHeading.contains("\"stale\":true"))
+    }
+
+    @Test
+    fun theRouteIsNumberedFromOne() {
+        val route = listOf(Waypoint(44.0, 14.0), Waypoint(44.1, 14.1))
+        val points = ChartGeoJson.routePoints(route)
+        assertTrue(points.contains("\"number\":1"))
+        assertTrue(points.contains("\"number\":2"))
+        assertTrue(ChartGeoJson.routeLine(route).contains("[14.0000000,44.0000000],[14.1000000,44.1000000]"))
+    }
+
+    @Test
+    fun aSingleWaypointDrawsNoLine() {
+        assertTrue(ChartGeoJson.routeLine(listOf(Waypoint(44.0, 14.0))).contains("\"features\":[]"))
+    }
+}

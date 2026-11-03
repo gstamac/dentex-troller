@@ -7,7 +7,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.LinearProgressIndicator
@@ -40,7 +40,8 @@ fun RouteScreen(viewModel: MainViewModel) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val progress = state.missionProgress
     var showAddDialog by remember { mutableStateOf(false) }
-    var waypoints by remember { mutableStateOf(listOf<Waypoint>()) }
+    val waypoints by viewModel.routeDraft.collectAsStateWithLifecycle()
+    val editable = progress.phase != MissionProgress.Phase.UPLOADING
 
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
         Text("Route", style = MaterialTheme.typography.headlineSmall)
@@ -48,7 +49,7 @@ fun RouteScreen(viewModel: MainViewModel) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
             Button(
                 onClick = { showAddDialog = true },
-                enabled = progress.phase != MissionProgress.Phase.UPLOADING,
+                enabled = editable,
             ) { Text("Add waypoint") }
             OutlinedButton(
                 onClick = { viewModel.uploadRoute(waypoints) },
@@ -87,20 +88,27 @@ fun RouteScreen(viewModel: MainViewModel) {
         }
 
         SectionHeader("Waypoints")
+        if (waypoints.isNotEmpty()) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TextButton(onClick = { viewModel.removeLastWaypoint() }, enabled = editable) { Text("Remove last") }
+                TextButton(onClick = { viewModel.clearRoute() }, enabled = editable) { Text("Clear") }
+            }
+        }
         if (waypoints.isEmpty()) {
             Text(
-                text = "No waypoint yet. Add one with a latitude and a longitude in decimal degrees.",
+                text = "No waypoint yet. Add one with a latitude and a longitude in decimal degrees, " +
+                    "or long-press a spot on the chart.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         } else {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                items(waypoints) { waypoint ->
+                itemsIndexed(waypoints) { index, waypoint ->
                     Text(
                         text = String.format(
                             Locale.US,
                             "%d.  %.7f, %.7f",
-                            waypoints.indexOf(waypoint) + 1,
+                            index + 1,
                             waypoint.latitude,
                             waypoint.longitude,
                         ),
@@ -123,7 +131,7 @@ fun RouteScreen(viewModel: MainViewModel) {
         AddWaypointDialog(
             onDismiss = { showAddDialog = false },
             onConfirm = { latitude, longitude ->
-                waypoints = waypoints + Waypoint(latitude, longitude)
+                viewModel.addWaypoint(Waypoint(latitude, longitude))
                 showAddDialog = false
             },
         )

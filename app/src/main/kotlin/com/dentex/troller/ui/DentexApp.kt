@@ -8,6 +8,7 @@ import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -38,6 +39,7 @@ private enum class Destination(
 ) {
     CONNECT("Connect", Icons.Default.Home),
     DASHBOARD("Dashboard", Icons.Default.Info),
+    CHART("Chart", Icons.Default.Place),
     CONTROLS("Controls", Icons.Default.Settings),
     ROUTE("Route", Icons.Default.LocationOn),
     DIAGNOSTICS("Log", Icons.AutoMirrored.Filled.List),
@@ -70,6 +72,7 @@ fun DentexApp(viewModel: MainViewModel = viewModel()) {
                         text = when (destination) {
                             Destination.CONNECT -> "Dentex Troller"
                             Destination.DASHBOARD -> "Dashboard"
+                            Destination.CHART -> "Chart"
                             Destination.CONTROLS -> "Controls"
                             Destination.ROUTE -> "Route"
                             Destination.DIAGNOSTICS -> "Diagnostics"
@@ -107,6 +110,7 @@ fun DentexApp(viewModel: MainViewModel = viewModel()) {
             when (destination) {
                 Destination.CONNECT -> ConnectScreen(viewModel)
                 Destination.DASHBOARD -> DashboardScreen(viewModel)
+                Destination.CHART -> ChartScreen(viewModel)
                 Destination.CONTROLS -> ControlsScreen(viewModel)
                 Destination.ROUTE -> RouteScreen(viewModel)
                 Destination.DIAGNOSTICS -> DiagnosticsScreen(viewModel)
