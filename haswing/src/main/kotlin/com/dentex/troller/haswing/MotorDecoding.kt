@@ -67,9 +67,12 @@ class TelemetryDecoder {
 
             is GlobalPositionInt -> {
                 val speedKmh = smoothSpeed(message.vx, message.vy)
+                // Without a fix the motor keeps sending this message with 0, 0. That is "no
+                // position", not a point in the Gulf of Guinea.
+                val hasPosition = message.latitude != 0 || message.longitude != 0
                 current.copy(
-                    latitude = message.latitude / GlobalPositionInt.COORDINATE_SCALE,
-                    longitude = message.longitude / GlobalPositionInt.COORDINATE_SCALE,
+                    latitude = if (hasPosition) message.latitude / GlobalPositionInt.COORDINATE_SCALE else null,
+                    longitude = if (hasPosition) message.longitude / GlobalPositionInt.COORDINATE_SCALE else null,
                     altitude = message.altitude / 1000.0,
                     speedKmh = speedKmh,
                     lastUpdateMillis = nowMillis,

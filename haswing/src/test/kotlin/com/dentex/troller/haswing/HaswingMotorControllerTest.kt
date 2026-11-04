@@ -210,6 +210,35 @@ class TelemetryDecoderTest {
     }
 
     @Test
+    fun aZeroPositionMeansNoFixAndClearsTheLastPosition() {
+        val decoder = TelemetryDecoder()
+        val fixed = decoder.apply(
+            GlobalPositionInt(latitude = 442202332, longitude = 147955242),
+            MotorTelemetry(),
+            nowMillis = 10L,
+        )
+        assertEquals(44.2202332, fixed.latitude!!, 1e-9)
+
+        val lost = decoder.apply(GlobalPositionInt(latitude = 0, longitude = 0), fixed, nowMillis = 20L)
+        assertNull(lost.latitude)
+        assertNull(lost.longitude)
+        assertEquals(20L, lost.lastUpdateMillis)
+    }
+
+    @Test
+    fun gpsQualityFollowsTheHelmsmanBands() {
+        assertEquals(GpsQuality.GOOD, GpsQuality.fromSignal(0))
+        assertEquals(GpsQuality.GOOD, GpsQuality.fromSignal(99))
+        assertEquals(GpsQuality.FAIR, GpsQuality.fromSignal(100))
+        assertEquals(GpsQuality.FAIR, GpsQuality.fromSignal(170))
+        assertEquals(GpsQuality.POOR, GpsQuality.fromSignal(171))
+        assertEquals(GpsQuality.POOR, GpsQuality.fromSignal(249))
+        assertEquals(GpsQuality.NO_FIX, GpsQuality.fromSignal(250))
+        assertEquals(GpsQuality.NO_FIX, MotorTelemetry(gpsSignal = 255).gpsQuality)
+        assertNull(MotorTelemetry().gpsQuality)
+    }
+
+    @Test
     fun speedBelowHalfIsClampedToZero() {
         val decoder = TelemetryDecoder()
         val telemetry = decoder.apply(

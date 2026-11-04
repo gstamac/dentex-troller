@@ -75,12 +75,12 @@ fun DashboardScreen(viewModel: MainViewModel) {
         TelemetryRow {
             TelemetryCard(
                 label = "Latitude",
-                value = telemetry.latitude?.let { String.format(Locale.US, "%.7f", it) } ?: "—",
+                value = coordinateText(telemetry.latitude, telemetry),
                 modifier = Modifier.weight(1f),
             )
             TelemetryCard(
                 label = "Longitude",
-                value = telemetry.longitude?.let { String.format(Locale.US, "%.7f", it) } ?: "—",
+                value = coordinateText(telemetry.longitude, telemetry),
                 modifier = Modifier.weight(1f),
             )
         }
@@ -99,7 +99,7 @@ fun DashboardScreen(viewModel: MainViewModel) {
         TelemetryRow {
             TelemetryCard(
                 label = "GPS signal",
-                value = telemetry.gpsSignal?.toString() ?: "—",
+                value = gpsText(telemetry),
                 modifier = Modifier.weight(1f),
             )
             TelemetryCard(
@@ -130,6 +130,19 @@ private fun motorStateText(telemetry: MotorTelemetry): String = when (telemetry.
     true -> "Running"
     false -> "Stopped"
     null -> "—"
+}
+
+/** A coordinate, or why there is none: the motor sends 0, 0 until its GPS has a fix. */
+private fun coordinateText(value: Double?, telemetry: MotorTelemetry): String = when {
+    value != null -> String.format(Locale.US, "%.7f", value)
+    telemetry.gpsSignal != null -> "No GPS fix"
+    else -> "—"
+}
+
+/** The raw value with its meaning; lower is better, 250 means no fix. */
+private fun gpsText(telemetry: MotorTelemetry): String {
+    val signal = telemetry.gpsSignal ?: return "—"
+    return "$signal · ${telemetry.gpsQuality?.label}"
 }
 
 private fun batteryText(telemetry: MotorTelemetry): String {

@@ -51,6 +51,34 @@ data class MotorTelemetry(
     /** True when no telemetry has been received for [staleAfterMillis]. */
     fun isStale(staleAfterMillis: Long, nowMillis: Long = System.currentTimeMillis()): Boolean =
         lastUpdateMillis > 0L && nowMillis - lastUpdateMillis > staleAfterMillis
+
+    /** Quality of the motor's GPS, or `null` before the first `RAW_IMU`. */
+    val gpsQuality: GpsQuality? get() = gpsSignal?.let(GpsQuality::fromSignal)
+}
+
+/**
+ * Quality of the motor's GPS, from the "GPS signal" value in `RAW_IMU.ygyro`.
+ *
+ * Lower is better and 250 means no fix. The bands are the ones `MainPresenter.gpsSignal` in the
+ * Helmsman application uses: it shows a green icon below 171 and a red one from there on.
+ */
+enum class GpsQuality(val label: String, val usable: Boolean) {
+    GOOD("good", true),
+    FAIR("fair", true),
+    POOR("poor", false),
+    NO_FIX("no fix", false);
+
+    companion object {
+        /** Value the motor reports while it has no fix. */
+        const val NO_FIX_SIGNAL = 250
+
+        fun fromSignal(signal: Int): GpsQuality = when {
+            signal >= NO_FIX_SIGNAL -> NO_FIX
+            signal > 170 -> POOR
+            signal >= 100 -> FAIR
+            else -> GOOD
+        }
+    }
 }
 
 /** Outcome of a command that was sent to the motor. */
