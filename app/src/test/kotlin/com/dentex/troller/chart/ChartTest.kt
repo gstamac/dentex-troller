@@ -70,6 +70,26 @@ class ChartStyleTest {
     }
 
     @Test
+    fun seamarksAreDrawnAboveTheLandAndBelowTheRoute() {
+        val json = ChartStyle.json("/charts/adriatic.pmtiles", night = false)
+        assertTrue(json.contains("\"source-layer\": \"seamark\""))
+        val land = json.indexOf("\"id\": \"${ChartStyle.LAYER_LAND}\"")
+        val icons = json.indexOf("\"id\": \"${ChartStyle.LAYER_SEAMARK_ICON}\"")
+        val route = json.indexOf("\"id\": \"route-line\"")
+        assertTrue(land in 0 until icons && icons < route)
+        // Every icon kind has an image, and every image kind is a known seamark kind.
+        assertTrue(ChartStyle.SEAMARK_KINDS.keys.containsAll(ChartStyle.SEAMARK_ICONS))
+    }
+
+    @Test
+    fun aTappedSeamarkIsDescribedWithItsLightAndName() {
+        assertEquals("Light · Fl(2) WR 5s\nRt Kremik", ChartStyle.describeSeamark("light", "Rt Kremik", "Fl(2) WR 5s", null))
+        assertEquals("Buoy · red", ChartStyle.describeSeamark("buoy", null, null, "red"))
+        assertEquals("Marina\nACI Šibenik", ChartStyle.describeSeamark("marina", "ACI Šibenik", null, "blue"))
+        assertEquals("Seamark", ChartStyle.describeSeamark("something_new", "", null, null))
+    }
+
+    @Test
     fun theRainbowStopsGoFromShallowToDeep() {
         val depths = ChartStyle.RAINBOW.map { it.first }
         assertEquals(depths.sorted(), depths)

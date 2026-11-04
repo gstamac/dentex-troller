@@ -91,16 +91,19 @@ adb connect 192.168.88.101:42037
 adb devices
 ```
 ```bash
+$device = adb devices | Select-String '^\d{1,3}(\.\d{1,3}){3}:\d+\s+device$' | ForEach-Object { ($_.Line -split '\s+')[0] } | Select-Object -First 1
+```
+```bash
 adb disconnect
 ```
 ```bash
-adb install 'C:\Work\github\dentex-troller\app\build\outputs\apk\debug\app-debug.apk'
+adb -s $device install 'C:\Work\github\dentex-troller\app\build\outputs\apk\debug\app-debug.apk'
 ```
 ```bash
-adb push tools/charts/build/adriatic.pmtiles /sdcard/Android/data/com.dentex.troller/files/charts/adriatic.pmtiles
+adb -s $device push tools/charts/build/adriatic.pmtiles /sdcard/Android/data/com.dentex.troller/files/charts/adriatic.pmtiles
 ```
 ```bash
-adb push tools/charts/build/adriatic-rainbow.pmtiles /sdcard/Android/data/com.dentex.troller/files/charts/adriatic-rainbow.pmtiles
+adb -s $device push tools/charts/build/adriatic-rainbow.pmtiles /sdcard/Android/data/com.dentex.troller/files/charts/adriatic-rainbow.pmtiles
 ```
 
 ## Verification
@@ -133,7 +136,7 @@ within range before it answers.
 2. **Dashboard** — shows the motor profile, the telemetry and the age of the last update. The
    profile is only reported after a heartbeat with a valid checksum was received.
 3. **Chart** — an offline depth chart of the Adriatic with the boat position and heading from the
-   motor telemetry. Tap the chart for the depth, long-press to add a waypoint to the route. The
+   motor telemetry. Tap the chart for the depth or a seamark, long-press to add a waypoint to the route. The
    **Rainbow** chip switches the optional rainbow depth layer on and off. The chart never sends
    anything to the motor. It needs the chart file, see [Offline chart](#offline-chart).
 4. **Controls** — propulsion commands stay disabled until a type 110 motor was confirmed. The stop
@@ -145,16 +148,22 @@ within range before it answers.
 
 ## Offline chart
 
-The chart combines two open data sets and is **not for navigation**:
+The chart combines open data sets and is **not for navigation**:
 
 - Depths: [EMODnet Bathymetry DTM 2024](https://emodnet.ec.europa.eu/en/bathymetry), CC BY 4.0.
   The grid is 1/960° (about 115 m), so near-shore contours are approximate.
 - Shoreline: [OpenStreetMap land polygons](https://osmdata.openstreetmap.de/data/land-polygons.html),
   © OpenStreetMap contributors, ODbL.
+- Seamarks: harbours, marinas, slipways, fuel, lights, buoys, beacons, rocks, wrecks, obstructions,
+  anchorages and moorings from [OpenStreetMap](https://www.openstreetmap.org/) and
+  [OpenSeaMap](https://www.openseamap.org/), through the [Geofabrik](https://download.geofabrik.de/)
+  country extracts, © OpenStreetMap contributors, ODbL. They are only as complete as the
+  community mapping.
 
 The chart is made of two files that are not part of the APK:
 
-- `adriatic.pmtiles`: land, depth bands and contours, as vector tiles. This file is required.
+- `adriatic.pmtiles`: land, depth bands, contours and seamarks, as vector tiles. This file is
+  required.
 - `adriatic-rainbow.pmtiles`: optional. The same depths as a smooth colour ramp, matching the
   "Mean depth rainbow colour (no land)" layer of the EMODnet map viewer, as raster tiles. It is
   about 115 m per grid cell, like the depth bands.
@@ -170,7 +179,9 @@ Add `chart` or `rainbow` after the image name to build only one of the files. Fo
 build of a small area, add `-e BBOX="14.68 44.14 14.91 44.30"` (west south east north) to
 `docker run`; that takes about five minutes instead of half an hour. The first run
 downloads about 1.1 GB (the EMODnet grid and the land polygons) into `tools/charts/build/data` and
-reuses it afterwards. The results are written to `tools/charts/build/`. Install them on the phone
+reuses it afterwards. For the seamarks it also downloads the OpenStreetMap extracts of the
+countries that overlap the area: about 190 MB for Croatia, and about 2.1 GB for the whole
+Adriatic. Delete `tools/charts/build/data/osm` to fetch fresh ones. The results are written to `tools/charts/build/`. Install them on the phone
 in one of two ways:
 
 - Copy them with adb:

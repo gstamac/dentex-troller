@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.Path
+import android.graphics.RectF
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -61,6 +62,7 @@ import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.MapView
 import org.maplibre.android.maps.Style
 import org.maplibre.android.style.sources.GeoJsonSource
+import org.maplibre.geojson.Point
 
 /**
  * Offline depth chart with the boat position and the route being edited.
@@ -148,6 +150,23 @@ private fun ChartView(
             }
             m.addOnMapClickListener { point ->
                 val screen = m.projection.toScreenLocation(point)
+                // Seamarks are small, so they get a finger-sized box rather than a single point.
+                val reach = SEAMARK_TAP_DP * context.resources.displayMetrics.density
+                val mark = m.queryRenderedFeatures(
+                    RectF(screen.x - reach, screen.y - reach, screen.x + reach, screen.y + reach),
+                    ChartStyle.LAYER_SEAMARK_ICON, ChartStyle.LAYER_SEAMARK_DOT,
+                ).firstOrNull()
+                if (mark != null) {
+                    val at = (mark.geometry() as? Point)?.let { LatLng(it.latitude(), it.longitude()) } ?: point
+                    val text = ChartStyle.describeSeamark(
+                        kind = mark.getStringProperty("kind"),
+                        name = mark.getStringProperty("name"),
+                        light = mark.getStringProperty("light"),
+                        colour = mark.getStringProperty("colour"),
+                    )
+                    tapped = "$text\n${ChartStyle.formatPosition(at.latitude, at.longitude)}"
+                    return@addOnMapClickListener true
+                }
                 val onLand = m.queryRenderedFeatures(screen, ChartStyle.LAYER_LAND).isNotEmpty()
                 val depth = m.queryRenderedFeatures(screen, ChartStyle.LAYER_DEPTH_AREA)
                     .firstOrNull()?.getNumberProperty("depth")?.toInt()
@@ -174,6 +193,7 @@ private fun ChartView(
         val json = ChartStyle.json(chart.file.absolutePath, night, rainbow?.file?.absolutePath)
         m.setStyle(Style.Builder().fromJson(json)) { loaded ->
             loaded.addImage(ChartStyle.IMAGE_BOAT, boatArrow(context, if (night) ChartStyle.NIGHT.boat else ChartStyle.DAY.boat))
+            loaded.addImages(HashMap(SeamarkIcons.all(context)))
             style = loaded
         }
     }
@@ -209,7 +229,7 @@ private fun ChartView(
             shape = MaterialTheme.shapes.small,
         ) {
             Text(
-                text = "NOT FOR NAVIGATION · EMODnet Bathymetry · © OpenStreetMap",
+                text = "NOT FOR NAVIGATION · EMODnet Bathymetry · © OpenStreetMap, OpenSeaMap",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.error,
                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
@@ -239,7 +259,7 @@ private fun ChartView(
             tonalElevation = 2.dp,
         ) {
             Text(
-                text = tapped ?: "Tap for the depth. Long-press to add a waypoint.",
+                text = tapped ?: "Tap for the depth or a seamark. Long-press to add a waypoint.",
                 style = MaterialTheme.typography.bodySmall,
                 modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
             )
@@ -374,3 +394,4 @@ private const val FOLLOW_ANIMATION_MILLIS = 500
 private const val STALE_AFTER_MILLIS = 5_000L
 private const val BOAT_ICON_DP = 30f
 private const val LEGEND_MAX_DEPTH = 500
+private const val SEAMARK_TAP_DP = 16f

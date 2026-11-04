@@ -33,6 +33,36 @@ object ChartStyle {
         3000 to "#0057d9", 4800 to "#120091", 5500 to "#7818cf", 6000 to "#b600d0",
     )
 
+    /** Colours of buoy and beacon dots, by their OpenSeaMap colour. */
+    val BUOY_COLORS: Map<String, String> = linkedMapOf(
+        "red" to "#d23a2f", "green" to "#2f9a4c", "yellow" to "#f2c40f", "black" to "#222222",
+        "white" to "#ffffff", "orange" to "#f28c28",
+    )
+
+    /** Magenta of light characteristics, as on paper charts. */
+    const val LIGHT_LABEL = "#a8166e"
+
+    /** Seamark kinds written by `tools/charts/seamarks.py`, with the name shown when one is tapped. */
+    val SEAMARK_KINDS: Map<String, String> = linkedMapOf(
+        "harbour" to "Harbour", "marina" to "Marina", "slipway" to "Slipway", "fuel" to "Fuel",
+        "light" to "Light", "buoy" to "Buoy", "beacon" to "Beacon", "rock" to "Rock",
+        "wreck" to "Wreck", "obstruction" to "Obstruction", "anchorage" to "Anchorage", "mooring" to "Mooring",
+    )
+
+    /** Kinds drawn as an icon named `seamark-<kind>`; buoys, beacons and moorings are coloured dots. */
+    val SEAMARK_ICONS: List<String> = listOf("harbour", "marina", "slipway", "fuel", "light", "rock", "wreck", "obstruction", "anchorage")
+
+    /** Image name of a seamark icon. */
+    fun seamarkImage(kind: String): String = "seamark-$kind"
+
+    /** Text for a tapped seamark, for example "Light · Fl(2) WR 5s\nRt Kremik". */
+    fun describeSeamark(kind: String?, name: String?, light: String?, colour: String?): String {
+        val title = SEAMARK_KINDS[kind] ?: "Seamark"
+        val first = listOfNotNull(title, colour?.takeIf { kind == "buoy" || kind == "beacon" }, light)
+            .joinToString(" · ")
+        return if (name.isNullOrBlank()) first else "$first\n$name"
+    }
+
     const val SOURCE_CHART = "chart"
     const val SOURCE_RAINBOW = "rainbow"
     const val SOURCE_BOAT = "boat"
@@ -41,6 +71,8 @@ object ChartStyle {
 
     const val LAYER_DEPTH_AREA = "depth-area"
     const val LAYER_RAINBOW = "depth-rainbow"
+    const val LAYER_SEAMARK_DOT = "seamark-dot"
+    const val LAYER_SEAMARK_ICON = "seamark-icon"
     const val LAYER_LAND = "land"
     const val LAYER_BOAT_ARROW = "boat-arrow"
 
@@ -110,6 +142,8 @@ object ChartStyle {
         val p = if (night) NIGHT else DAY
         val bandColors = DEPTHS.joinToString(", ") { "$it, \"${bandColor(p, it)}\"" }
         val major = MAJOR_CONTOURS.joinToString(", ")
+        val buoyColors = BUOY_COLORS.entries.joinToString(", ") { (name, color) -> "\"$name\", \"$color\"" }
+        val iconKinds = SEAMARK_ICONS.joinToString(", ") { "\"$it\"" }
         val rainbowSource = rainbowPath?.let {
             """"$SOURCE_RAINBOW": { "type": "raster", "url": ${quote("pmtiles://file://$it")}, "tileSize": 256 },"""
         } ?: ""
@@ -153,6 +187,26 @@ object ChartStyle {
               "paint": { "fill-color": "${p.land}" } },
             { "id": "shore", "type": "line", "source": "$SOURCE_CHART", "source-layer": "land",
               "paint": { "line-color": "${p.shore}", "line-width": ["interpolate", ["linear"], ["zoom"], 6, 0.3, 15, 1.4] } },
+            { "id": "$LAYER_SEAMARK_DOT", "type": "circle", "source": "$SOURCE_CHART", "source-layer": "seamark",
+              "filter": ["match", ["get", "kind"], ["buoy", "beacon", "mooring"], true, false],
+              "paint": { "circle-radius": ["interpolate", ["linear"], ["zoom"], 12, 3, 16, 6],
+                "circle-color": ["match", ["get", "colour"], $buoyColors, "#9a9a9a"],
+                "circle-stroke-color": "#1d2b36", "circle-stroke-width": 1 } },
+            { "id": "$LAYER_SEAMARK_ICON", "type": "symbol", "source": "$SOURCE_CHART", "source-layer": "seamark",
+              "filter": ["match", ["get", "kind"], [$iconKinds], true, false],
+              "layout": { "icon-image": ["concat", "seamark-", ["get", "kind"]],
+                "icon-size": ["interpolate", ["linear"], ["zoom"], 9, 0.7, 14, 1.0],
+                "icon-allow-overlap": true, "icon-ignore-placement": true } },
+            { "id": "seamark-name", "type": "symbol", "source": "$SOURCE_CHART", "source-layer": "seamark",
+              "minzoom": 11, "filter": ["all", ["has", "name"], ["match", ["get", "kind"], ["harbour", "marina"], true, false]],
+              "layout": { "text-field": ["get", "name"], "text-font": ["$FONT"], "text-size": 12,
+                "text-anchor": "top", "text-offset": [0, 1.0], "text-optional": true },
+              "paint": { "text-color": "${p.label}", "text-halo-color": "${p.labelHalo}", "text-halo-width": 1.5 } },
+            { "id": "seamark-light", "type": "symbol", "source": "$SOURCE_CHART", "source-layer": "seamark",
+              "minzoom": 13, "filter": ["all", ["has", "light"], ["!", ["match", ["get", "kind"], ["harbour", "marina"], true, false]]],
+              "layout": { "text-field": ["get", "light"], "text-font": ["$FONT"], "text-size": 10,
+                "text-anchor": "left", "text-offset": [0.9, 0], "text-optional": true },
+              "paint": { "text-color": "$LIGHT_LABEL", "text-halo-color": "${p.labelHalo}", "text-halo-width": 1.5 } },
             { "id": "route-line", "type": "line", "source": "$SOURCE_ROUTE_LINE",
               "layout": { "line-join": "round", "line-cap": "round" },
               "paint": { "line-color": "${p.route}", "line-width": 2.5, "line-dasharray": [2, 1.5] } },
