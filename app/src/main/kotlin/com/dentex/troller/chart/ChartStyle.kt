@@ -11,6 +11,10 @@ import java.util.Locale
  *
  * The PMTiles file is built by `tools/charts/build-chart.sh` and carries three layers:
  * `land`, `depth_area` (each band carries the depth where it starts) and `depth_contour`.
+ *
+ * The optional rainbow file is a raster of the same depths in EMODnet's rainbow colour ramp. When
+ * it is shown it covers the depth bands, which stay underneath for the depth readout and fill the
+ * gaps where the raster has no water.
  */
 object ChartStyle {
 
@@ -20,12 +24,23 @@ object ChartStyle {
     /** Contours drawn heavier and labelled from a lower zoom. */
     val MAJOR_CONTOURS: List<Int> = listOf(10, 20, 50, 100, 200, 500, 1000)
 
+    /**
+     * Stops of the rainbow ramp: depth in metres and colour, shallow first. They match the colour
+     * file in the build script, which copies EMODnet's `rainbowcolour` WMS style.
+     */
+    val RAINBOW: List<Pair<Int, String>> = listOf(
+        0 to "#ce0010", 5 to "#ff081e", 40 to "#e5eb02", 200 to "#02e411", 500 to "#00c7dc",
+        3000 to "#0057d9", 4800 to "#120091", 5500 to "#7818cf", 6000 to "#b600d0",
+    )
+
     const val SOURCE_CHART = "chart"
+    const val SOURCE_RAINBOW = "rainbow"
     const val SOURCE_BOAT = "boat"
     const val SOURCE_ROUTE_LINE = "route-line"
     const val SOURCE_ROUTE_POINTS = "route-points"
 
     const val LAYER_DEPTH_AREA = "depth-area"
+    const val LAYER_RAINBOW = "depth-rainbow"
     const val LAYER_LAND = "land"
     const val LAYER_BOAT_ARROW = "boat-arrow"
 
@@ -87,11 +102,23 @@ object ChartStyle {
         return if (index < 0 || next == null) "more than $depth m" else "$depth–$next m"
     }
 
-    /** Style JSON for the chart stored at [chartPath]. */
-    fun json(chartPath: String, night: Boolean): String {
+    /**
+     * Style JSON for the chart stored at [chartPath]. With a [rainbowPath] the rainbow raster
+     * is drawn over the depth bands.
+     */
+    fun json(chartPath: String, night: Boolean, rainbowPath: String? = null): String {
         val p = if (night) NIGHT else DAY
         val bandColors = DEPTHS.joinToString(", ") { "$it, \"${bandColor(p, it)}\"" }
         val major = MAJOR_CONTOURS.joinToString(", ")
+        val rainbowSource = rainbowPath?.let {
+            """"$SOURCE_RAINBOW": { "type": "raster", "url": ${quote("pmtiles://file://$it")}, "tileSize": 256 },"""
+        } ?: ""
+        // Dimmed at night so the bright ramp does not spoil night vision.
+        val rainbowLayer = rainbowPath?.let {
+            """{ "id": "$LAYER_RAINBOW", "type": "raster", "source": "$SOURCE_RAINBOW",
+              "paint": { "raster-resampling": "linear", "raster-fade-duration": 0,
+                "raster-brightness-max": ${if (night) 0.45 else 1.0}, "raster-saturation": ${if (night) -0.3 else 0.0} } },"""
+        } ?: ""
         return """
         {
           "version": 8,
@@ -99,6 +126,7 @@ object ChartStyle {
           "glyphs": "asset://glyphs/{fontstack}/{range}.pbf",
           "sources": {
             "$SOURCE_CHART": { "type": "vector", "url": ${quote("pmtiles://file://$chartPath")} },
+            $rainbowSource
             "$SOURCE_BOAT": { "type": "geojson", "data": { "type": "FeatureCollection", "features": [] } },
             "$SOURCE_ROUTE_LINE": { "type": "geojson", "data": { "type": "FeatureCollection", "features": [] } },
             "$SOURCE_ROUTE_POINTS": { "type": "geojson", "data": { "type": "FeatureCollection", "features": [] } }
@@ -107,6 +135,7 @@ object ChartStyle {
             { "id": "water", "type": "background", "paint": { "background-color": "${p.water[0]}" } },
             { "id": "$LAYER_DEPTH_AREA", "type": "fill", "source": "$SOURCE_CHART", "source-layer": "depth_area",
               "paint": { "fill-color": ["match", ["get", "depth"], $bandColors, "${p.deep}"], "fill-antialias": false } },
+            $rainbowLayer
             { "id": "contour-minor", "type": "line", "source": "$SOURCE_CHART", "source-layer": "depth_contour",
               "filter": ["match", ["get", "depth"], [$major], false, true],
               "paint": { "line-color": "${p.contour}", "line-opacity": 0.45,

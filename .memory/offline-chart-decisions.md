@@ -9,13 +9,13 @@ On 2026-11-03 the owner asked for an Adriatic depth chart in the app. It is buil
 depths and OSM land polygons with `tools/charts`, and installed as a separate `adriatic.pmtiles` file
 (adb push or in-app import), not bundled in the APK.
 
+On 2026-11-04 the owner asked for EMODnet's "Mean depth rainbow colour (no land)" WMS layer and chose to
+render it offline (`adriatic-rainbow.pmtiles`, built from the same grid) over loading the WMS live,
+because there may be no mobile data at sea.
+
 **Why:**
 - The file is too large for git (GitHub refuses files over 100 MB).
 - MapLibre reads PMTiles only from a real file path, not from assets.
-
-**Navionics:** the owner asked about pulling tiles out of the installed Navionics app. That was refused:
-the charts are encrypted and the licence forbids extraction. The legitimate path is the Garmin Navionics
-Mobile SDK, which needs a developer request; the owner had not applied as of 2026-11-03.
 
 **How to apply:** don't suggest bundling the chart in the APK, and don't revisit Navionics extraction.
 Near-shore depth detail is limited by the roughly 115 m EMODnet grid; the SDK is the upgrade path.

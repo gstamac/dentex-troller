@@ -3,15 +3,17 @@ package com.dentex.troller.chart
 import com.dentex.troller.navigation.Waypoint
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class PmtilesHeaderTest {
 
-    private fun header(magic: String, version: Int): ByteArray =
+    private fun header(magic: String, version: Int, tileType: Int = PmtilesHeader.TILE_TYPE_MVT): ByteArray =
         ByteArray(PmtilesHeader.LENGTH).also { bytes ->
             magic.toByteArray(Charsets.US_ASCII).copyInto(bytes)
             bytes[magic.length] = version.toByte()
+            bytes[PmtilesHeader.TILE_TYPE_OFFSET] = tileType.toByte()
         }
 
     @Test
@@ -25,6 +27,21 @@ class PmtilesHeaderTest {
         assertFalse(PmtilesHeader.isVersion3(header("SQLite ", 3)))
         assertFalse(PmtilesHeader.isVersion3(ByteArray(4)))
     }
+
+    @Test
+    fun vectorTilesAreTheChartAndImagesAreTheRainbowLayer() {
+        assertEquals(ChartKind.DEPTHS, PmtilesHeader.kind(header("PMTiles", 3, PmtilesHeader.TILE_TYPE_MVT)))
+        assertEquals(ChartKind.RAINBOW, PmtilesHeader.kind(header("PMTiles", 3, PmtilesHeader.TILE_TYPE_WEBP)))
+        assertEquals(ChartKind.RAINBOW, PmtilesHeader.kind(header("PMTiles", 3, PmtilesHeader.TILE_TYPE_PNG)))
+    }
+
+    @Test
+    fun unknownTileTypesAndOtherFilesAreRejected() {
+        assertNull(PmtilesHeader.kind(header("PMTiles", 3, tileType = 0)))
+        assertNull(PmtilesHeader.kind(header("PMTiles", 3, tileType = 5)))
+        assertNull(PmtilesHeader.kind(header("PMTiles", 2)))
+        assertNull(PmtilesHeader.kind(ByteArray(8)))
+    }
 }
 
 class ChartStyleTest {
@@ -36,6 +53,27 @@ class ChartStyleTest {
         for (layer in listOf("depth_area", "depth_contour", "land")) {
             assertTrue("missing source layer $layer", json.contains("\"source-layer\": \"$layer\""))
         }
+    }
+
+    @Test
+    fun theRainbowLayerIsOnlyAddedWhenItsFileIsGiven() {
+        val without = ChartStyle.json("/charts/adriatic.pmtiles", night = false)
+        assertFalse(without.contains(ChartStyle.LAYER_RAINBOW))
+
+        val with = ChartStyle.json("/charts/adriatic.pmtiles", night = false, rainbowPath = "/charts/adriatic-rainbow.pmtiles")
+        assertTrue(with.contains("\"type\": \"raster\", \"url\": \"pmtiles://file:///charts/adriatic-rainbow.pmtiles\""))
+        // Drawn over the depth bands and under the contours and the land.
+        val bands = with.indexOf("\"id\": \"${ChartStyle.LAYER_DEPTH_AREA}\"")
+        val rainbow = with.indexOf("\"id\": \"${ChartStyle.LAYER_RAINBOW}\"")
+        val contours = with.indexOf("\"id\": \"contour-minor\"")
+        assertTrue(bands in 0 until rainbow && rainbow < contours)
+    }
+
+    @Test
+    fun theRainbowStopsGoFromShallowToDeep() {
+        val depths = ChartStyle.RAINBOW.map { it.first }
+        assertEquals(depths.sorted(), depths)
+        assertEquals(0, depths.first())
     }
 
     @Test

@@ -1,4 +1,5 @@
-# GDAL for the contours and the coastline clip, tippecanoe for the PMTiles file.
+# GDAL for the contours, the coastline clip and the rainbow raster; tippecanoe for the vector
+# tiles; go-pmtiles to turn the raster MBTiles into PMTiles.
 FROM ghcr.io/osgeo/gdal:ubuntu-full-3.11.4
 
 # The image ships an Apache Arrow apt source whose key has expired; GDAL does not need it.
@@ -8,7 +9,9 @@ RUN rm -f /etc/apt/sources.list.d/*arrow* \
     && git clone --depth 1 --branch 2.79.0 https://github.com/felt/tippecanoe.git /tmp/tippecanoe \
     && make -C /tmp/tippecanoe -j4 \
     && make -C /tmp/tippecanoe install \
-    && rm -rf /tmp/tippecanoe /var/lib/apt/lists/*
+    && rm -rf /tmp/tippecanoe /var/lib/apt/lists/* \
+    && curl -sSfL https://github.com/protomaps/go-pmtiles/releases/download/v1.31.2/go-pmtiles_1.31.2_Linux_x86_64.tar.gz \
+        | tar -xz -C /usr/local/bin pmtiles
 
 COPY build-chart.sh /usr/local/bin/build-chart.sh
 RUN chmod +x /usr/local/bin/build-chart.sh

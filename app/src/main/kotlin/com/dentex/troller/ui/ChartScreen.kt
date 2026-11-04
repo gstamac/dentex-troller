@@ -7,17 +7,22 @@ import android.graphics.Paint
 import android.graphics.Path
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExtendedFloatingActionButton
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -33,6 +38,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -65,24 +71,30 @@ import org.maplibre.android.style.sources.GeoJsonSource
 @Composable
 fun ChartScreen(viewModel: MainViewModel) {
     val chart by viewModel.chartFile.collectAsStateWithLifecycle()
+    val rainbowFile by viewModel.rainbowFile.collectAsStateWithLifecycle()
+    val showRainbow by viewModel.showRainbow.collectAsStateWithLifecycle()
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val route by viewModel.routeDraft.collectAsStateWithLifecycle()
     val importer = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let(viewModel::importChart)
     }
+    val import = { importer.launch(arrayOf("*/*")) }
 
-    // Picks up a chart that was copied with adb while the app was running.
+    // Picks up chart files that were copied with adb while the app was running.
     LaunchedEffect(Unit) { viewModel.refreshChart() }
 
     val installed = chart
     if (installed == null) {
-        NoChart(path = viewModel.chartPath, onImport = { importer.launch(arrayOf("*/*")) })
+        NoChart(path = viewModel.chartPath(), onImport = import)
         return
     }
 
     val editable = state.missionProgress.phase != MissionProgress.Phase.UPLOADING
     ChartView(
         chart = installed,
+        rainbow = rainbowFile?.takeIf { showRainbow },
+        rainbowInstalled = rainbowFile != null,
+        onRainbowClick = { if (rainbowFile == null) import() else viewModel.setShowRainbow(!showRainbow) },
         telemetry = state.telemetry,
         route = route,
         onLongPress = { if (editable) viewModel.addWaypoint(it) },
@@ -92,6 +104,9 @@ fun ChartScreen(viewModel: MainViewModel) {
 @Composable
 private fun ChartView(
     chart: ChartStore.InstalledChart,
+    rainbow: ChartStore.InstalledChart?,
+    rainbowInstalled: Boolean,
+    onRainbowClick: () -> Unit,
     telemetry: MotorTelemetry,
     route: List<Waypoint>,
     onLongPress: (Waypoint) -> Unit,
@@ -153,10 +168,10 @@ private fun ChartView(
         onDispose { map = null }
     }
 
-    LaunchedEffect(map, chart, night) {
+    LaunchedEffect(map, chart, rainbow, night) {
         val m = map ?: return@LaunchedEffect
         style = null
-        val json = ChartStyle.json(chart.file.absolutePath, night)
+        val json = ChartStyle.json(chart.file.absolutePath, night, rainbow?.file?.absolutePath)
         m.setStyle(Style.Builder().fromJson(json)) { loaded ->
             loaded.addImage(ChartStyle.IMAGE_BOAT, boatArrow(context, if (night) ChartStyle.NIGHT.boat else ChartStyle.DAY.boat))
             style = loaded
@@ -189,7 +204,7 @@ private fun ChartView(
         AndroidView(factory = { mapView }, modifier = Modifier.fillMaxSize())
 
         Surface(
-            modifier = Modifier.align(Alignment.TopStart).padding(8.dp),
+            modifier = Modifier.align(Alignment.TopStart).padding(8.dp).widthIn(max = 230.dp),
             color = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
             shape = MaterialTheme.shapes.small,
         ) {
@@ -199,6 +214,22 @@ private fun ChartView(
                 color = MaterialTheme.colorScheme.error,
                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
             )
+        }
+
+        Column(
+            modifier = Modifier.align(Alignment.TopEnd).padding(8.dp),
+            horizontalAlignment = Alignment.End,
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            FilterChip(
+                selected = rainbow != null,
+                onClick = onRainbowClick,
+                label = { Text(if (rainbowInstalled) "Rainbow" else "Add rainbow layer") },
+                colors = FilterChipDefaults.filterChipColors(
+                    containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
+                ),
+            )
+            if (rainbow != null) RainbowLegend()
         }
 
         Surface(
@@ -225,6 +256,31 @@ private fun ChartView(
     }
 }
 
+/** Colour stops of the rainbow layer that occur in the Adriatic (it is nowhere deeper than about 1250 m). */
+@Composable
+private fun RainbowLegend() {
+    Surface(
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
+        shape = MaterialTheme.shapes.small,
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+            verticalArrangement = Arrangement.spacedBy(3.dp),
+        ) {
+            ChartStyle.RAINBOW.filter { (depth, _) -> depth <= LEGEND_MAX_DEPTH }.forEach { (depth, color) ->
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Box(
+                        modifier = Modifier
+                            .size(width = 18.dp, height = 10.dp)
+                            .background(Color(android.graphics.Color.parseColor(color)), MaterialTheme.shapes.extraSmall),
+                    )
+                    Text("$depth m", style = MaterialTheme.typography.labelSmall)
+                }
+            }
+        }
+    }
+}
+
 @Composable
 private fun NoChart(path: String, onImport: () -> Unit) {
     Column(
@@ -240,6 +296,12 @@ private fun NoChart(path: String, onImport: () -> Unit) {
         Button(onClick = onImport) { Text("Import chart file") }
         SectionHeader("Copy with adb")
         MonospaceText("adb push adriatic.pmtiles $path")
+        Text(
+            text = "The optional rainbow depth layer, adriatic-rainbow.pmtiles, is imported or copied " +
+                "the same way, into the same folder.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
         Text(
             text = "The chart appears when you open this tab again after the file is in place.",
             style = MaterialTheme.typography.bodySmall,
@@ -311,3 +373,4 @@ private const val START_LONGITUDE = 15.6
 private const val FOLLOW_ANIMATION_MILLIS = 500
 private const val STALE_AFTER_MILLIS = 5_000L
 private const val BOAT_ICON_DP = 30f
+private const val LEGEND_MAX_DEPTH = 500

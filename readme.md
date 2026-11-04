@@ -84,7 +84,7 @@ AGP 9 compiles the Kotlin sources of the Android modules with its built-in Kotli
 adb pair 192.168.88.101:33977
 ```
 ```bash
-adb connect 192.168.88.101:38235
+adb connect 192.168.88.101:42037
 ```
 
 ```bash
@@ -95,6 +95,12 @@ adb disconnect
 ```
 ```bash
 adb install 'C:\Work\github\dentex-troller\app\build\outputs\apk\debug\app-debug.apk'
+```
+```bash
+adb push tools/charts/build/adriatic.pmtiles /sdcard/Android/data/com.dentex.troller/files/charts/adriatic.pmtiles
+```
+```bash
+adb push tools/charts/build/adriatic-rainbow.pmtiles /sdcard/Android/data/com.dentex.troller/files/charts/adriatic-rainbow.pmtiles
 ```
 
 ## Verification
@@ -128,8 +134,8 @@ within range before it answers.
    profile is only reported after a heartbeat with a valid checksum was received.
 3. **Chart** — an offline depth chart of the Adriatic with the boat position and heading from the
    motor telemetry. Tap the chart for the depth, long-press to add a waypoint to the route. The
-   chart never sends anything to the motor. It needs the chart file, see
-   [Offline chart](#offline-chart).
+   **Rainbow** chip switches the optional rainbow depth layer on and off. The chart never sends
+   anything to the motor. It needs the chart file, see [Offline chart](#offline-chart).
 4. **Controls** — propulsion commands stay disabled until a type 110 motor was confirmed. The stop
    command is always available from the top bar. Switching to a mode asks for a confirmation.
 5. **Route** — uploads and downloads waypoints. Uploading a route never starts the motor.
@@ -146,27 +152,41 @@ The chart combines two open data sets and is **not for navigation**:
 - Shoreline: [OpenStreetMap land polygons](https://osmdata.openstreetmap.de/data/land-polygons.html),
   © OpenStreetMap contributors, ODbL.
 
-The chart is a separate file, `adriatic.pmtiles`, and is not part of the APK. Build it with Docker:
+The chart is made of two files that are not part of the APK:
+
+- `adriatic.pmtiles`: land, depth bands and contours, as vector tiles. This file is required.
+- `adriatic-rainbow.pmtiles`: optional. The same depths as a smooth colour ramp, matching the
+  "Mean depth rainbow colour (no land)" layer of the EMODnet map viewer, as raster tiles. It is
+  about 115 m per grid cell, like the depth bands.
+
+Build both with Docker:
 
 ```bash
 docker build -t dentex/chart-builder tools/charts
 docker run --rm -v "$PWD/tools/charts/build/data:/data" -v "$PWD/tools/charts/build:/out" dentex/chart-builder
 ```
 
-The first run downloads about 1.1 GB (the EMODnet grid and the land polygons) into
-`tools/charts/build/data` and reuses it afterwards. The result is
-`tools/charts/build/adriatic.pmtiles`. Then install it on the phone in one of two ways:
+Add `chart` or `rainbow` after the image name to build only one of the files. For a quick test
+build of a small area, add `-e BBOX="14.68 44.14 14.91 44.30"` (west south east north) to
+`docker run`; that takes about five minutes instead of half an hour. The first run
+downloads about 1.1 GB (the EMODnet grid and the land polygons) into `tools/charts/build/data` and
+reuses it afterwards. The results are written to `tools/charts/build/`. Install them on the phone
+in one of two ways:
 
-- Copy it with adb:
+- Copy them with adb:
 
   ```bash
   adb push tools/charts/build/adriatic.pmtiles /sdcard/Android/data/com.dentex.troller/files/charts/adriatic.pmtiles
+  adb push tools/charts/build/adriatic-rainbow.pmtiles /sdcard/Android/data/com.dentex.troller/files/charts/adriatic-rainbow.pmtiles
   ```
 
-- Copy it to the phone in any way, open the **Chart** tab and tap **Import chart file**.
+- Copy them to the phone in any way. Then open the **Chart** tab and tap **Import chart file** for
+  the chart, and **Add rainbow layer** for the rainbow file. The app tells the files apart by their
+  tile type.
 
-The area, the contour depths and the zoom levels are set at the top of
-[build-chart.sh](tools/charts/build-chart.sh). The depths must match `ChartStyle.DEPTHS` in the app.
+The area, the contour depths, the zoom levels and the rainbow colours are set in
+[build-chart.sh](tools/charts/build-chart.sh). The depths must match `ChartStyle.DEPTHS` in the
+app, and the rainbow colours must match `ChartStyle.RAINBOW`, which draws the legend.
 
 ## Troubleshooting
 

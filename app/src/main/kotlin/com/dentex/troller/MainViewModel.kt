@@ -9,6 +9,7 @@ import com.dentex.troller.ble.BleEvent
 import com.dentex.troller.ble.BleScanResult
 import com.dentex.troller.ble.BleScanner
 import com.dentex.troller.ble.ConnectionState
+import com.dentex.troller.chart.ChartKind
 import com.dentex.troller.chart.ChartStore
 import com.dentex.troller.haswing.CommandGateState
 import com.dentex.troller.haswing.CommandResult
@@ -100,10 +101,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     private val chartStore = ChartStore(application)
-    private val _chartFile = MutableStateFlow(chartStore.current())
+    private val _chartFile = MutableStateFlow(chartStore.current(ChartKind.DEPTHS))
 
     /** The installed offline chart, or `null` when none is installed yet. */
     val chartFile: StateFlow<ChartStore.InstalledChart?> = _chartFile.asStateFlow()
+
+    private val _rainbowFile = MutableStateFlow(chartStore.current(ChartKind.RAINBOW))
+
+    /** The installed rainbow depth layer, or `null` when none is installed. */
+    val rainbowFile: StateFlow<ChartStore.InstalledChart?> = _rainbowFile.asStateFlow()
+
+    private val chartSettings = application.getSharedPreferences(CHART_SETTINGS, android.content.Context.MODE_PRIVATE)
+    private val _showRainbow = MutableStateFlow(chartSettings.getBoolean(KEY_SHOW_RAINBOW, true))
+
+    /** Whether the chart shows the rainbow depth layer when it is installed. Kept across restarts. */
+    val showRainbow: StateFlow<Boolean> = _showRainbow.asStateFlow()
 
     private val _routeDraft = MutableStateFlow<List<Waypoint>>(emptyList())
 
@@ -317,21 +329,29 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _routeDraft.value = emptyList()
     }
 
-    /** Looks for the chart file again, for example after it was copied with adb. */
+    /** Looks for the chart files again, for example after they were copied with adb. */
     fun refreshChart() {
-        _chartFile.value = chartStore.current()
+        _chartFile.value = chartStore.current(ChartKind.DEPTHS)
+        _rainbowFile.value = chartStore.current(ChartKind.RAINBOW)
     }
 
-    /** Where the chart file is expected, for the instructions on the chart screen. */
-    val chartPath: String get() = chartStore.file.absolutePath
+    /** Where the chart file of [kind] is expected, for the instructions on the chart screen. */
+    fun chartPath(kind: ChartKind = ChartKind.DEPTHS): String = chartStore.file(kind).absolutePath
 
-    /** Imports a chart file picked from the phone's storage. */
+    /** Shows or hides the rainbow depth layer. */
+    fun setShowRainbow(show: Boolean) {
+        _showRainbow.value = show
+        chartSettings.edit().putBoolean(KEY_SHOW_RAINBOW, show).apply()
+    }
+
+    /** Imports a chart or rainbow file picked from the phone's storage. */
     fun importChart(uri: Uri) {
         viewModelScope.launch {
             when (val result = chartStore.import(uri)) {
                 is ChartStore.ImportResult.Imported -> {
-                    _chartFile.value = chartStore.current()
-                    notifyUser(String.format(Locale.US, "Chart imported (%.1f MB)", result.bytes / 1_048_576.0))
+                    refreshChart()
+                    if (result.kind == ChartKind.RAINBOW) setShowRainbow(true)
+                    notifyUser(String.format(Locale.US, "%s imported (%.1f MB)", result.kind.title, result.bytes / 1_048_576.0))
                 }
                 is ChartStore.ImportResult.Failed -> notifyUser(result.reason)
             }
@@ -393,5 +413,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private companion object {
         /** How often the diagnostics screen picks up new log records. */
         const val LOG_REFRESH_MILLIS = 250L
+
+        const val CHART_SETTINGS = "chart"
+        const val KEY_SHOW_RAINBOW = "show_rainbow"
     }
 }

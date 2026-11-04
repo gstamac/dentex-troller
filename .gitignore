@@ -8,3 +8,6 @@ captures/
 .cxx
 local.properties
 .kilo/
+
+# Copies of licensed Navionics chart cards; never commit them
+docs/navionics/
