@@ -10,6 +10,7 @@ import com.dentex.troller.ble.BleScanResult
 import com.dentex.troller.ble.BleScanner
 import com.dentex.troller.ble.ConnectionState
 import com.dentex.troller.chart.ChartKind
+import com.dentex.troller.chart.ChartLayer
 import com.dentex.troller.chart.ChartStore
 import com.dentex.troller.haswing.CommandGateState
 import com.dentex.troller.haswing.CommandResult
@@ -119,10 +120,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val rainbowFile: StateFlow<ChartStore.InstalledChart?> = _rainbowFile.asStateFlow()
 
     private val chartSettings = application.getSharedPreferences(CHART_SETTINGS, android.content.Context.MODE_PRIVATE)
-    private val _showRainbow = MutableStateFlow(chartSettings.getBoolean(KEY_SHOW_RAINBOW, true))
+    private val _chartLayer = MutableStateFlow(
+        chartSettings.getString(KEY_CHART_LAYER, null)
+            ?.let { saved -> ChartLayer.entries.firstOrNull { it.name == saved } }
+            // Before the layers menu, the rainbow layer was a switch that defaulted to on.
+            ?: if (chartSettings.getBoolean(KEY_SHOW_RAINBOW, true)) ChartLayer.RAINBOW else ChartLayer.DEFAULT,
+    )
 
-    /** Whether the chart shows the rainbow depth layer when it is installed. Kept across restarts. */
-    val showRainbow: StateFlow<Boolean> = _showRainbow.asStateFlow()
+    /** The layer picked in the chart's layers menu. Kept across restarts. */
+    val chartLayer: StateFlow<ChartLayer> = _chartLayer.asStateFlow()
 
     private val _routeDraft = MutableStateFlow<List<Waypoint>>(emptyList())
 
@@ -446,10 +452,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     /** Where the chart file of [kind] is expected, for the instructions on the chart screen. */
     fun chartPath(kind: ChartKind = ChartKind.DEPTHS): String = chartStore.file(kind).absolutePath
 
-    /** Shows or hides the rainbow depth layer. */
-    fun setShowRainbow(show: Boolean) {
-        _showRainbow.value = show
-        chartSettings.edit().putBoolean(KEY_SHOW_RAINBOW, show).apply()
+    /** Picks the chart layer. */
+    fun setChartLayer(layer: ChartLayer) {
+        _chartLayer.value = layer
+        chartSettings.edit().putString(KEY_CHART_LAYER, layer.name).apply()
     }
 
     /** Imports a chart or rainbow file picked from the phone's storage. */
@@ -458,7 +464,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             when (val result = chartStore.import(uri)) {
                 is ChartStore.ImportResult.Imported -> {
                     refreshChart()
-                    if (result.kind == ChartKind.RAINBOW) setShowRainbow(true)
+                    if (result.kind == ChartKind.RAINBOW) setChartLayer(ChartLayer.RAINBOW)
                     notifyUser(String.format(Locale.US, "%s imported (%.1f MB)", result.kind.title, result.bytes / 1_048_576.0))
                 }
                 is ChartStore.ImportResult.Failed -> notifyUser(result.reason)
@@ -524,6 +530,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
         const val CHART_SETTINGS = "chart"
         const val KEY_SHOW_RAINBOW = "show_rainbow"
+        const val KEY_CHART_LAYER = "layer"
 
         const val CONNECTION_SETTINGS = "connection"
         const val KEY_LAST_DEVICE = "last_device"

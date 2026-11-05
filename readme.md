@@ -143,7 +143,7 @@ within range before it answers.
    profile is only reported after a heartbeat with a valid checksum was received.
 3. **Chart** — an offline depth chart of the Adriatic with the boat position and heading from the
    motor telemetry. Tap the chart for the depth or a seamark, long-press to add a waypoint to the route. The
-   **Rainbow** chip switches the optional rainbow depth layer on and off. The boat is green when
+   **layers** button under the STOP sign picks the chart layer: Default or Rainbow depths. The boat is green when
    the position comes from the motor and light blue when the motor has no recent fix and the
    phone's own GPS is used instead (**Use phone GPS** asks for the permission); it turns grey when
    neither has a recent fix. The phone position is only displayed. The chart never sends
@@ -201,7 +201,7 @@ in one of two ways:
   ```
 
 - Copy them to the phone in any way. Then open the **Chart** tab and tap **Import chart file** for
-  the chart, and **Add rainbow layer** for the rainbow file. The app tells the files apart by their
+  the chart, and **Rainbow depths** in the layers menu for the rainbow file. The app tells the files apart by their
   tile type.
 
 The area, the contour depths, the zoom levels and the rainbow colours are set in

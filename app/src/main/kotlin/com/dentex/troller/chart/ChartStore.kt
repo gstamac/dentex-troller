@@ -125,3 +125,12 @@ object PmtilesHeader {
         }
     }
 }
+
+/** The base look of the chart, picked from the layers menu. */
+enum class ChartLayer(val title: String, val needs: ChartKind?) {
+    /** The vector depth bands and contours. */
+    DEFAULT("Default", null),
+
+    /** The rainbow depth raster over the depth bands. */
+    RAINBOW("Rainbow depths", ChartKind.RAINBOW),
+}

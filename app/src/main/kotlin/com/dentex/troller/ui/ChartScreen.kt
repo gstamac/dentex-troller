@@ -13,13 +13,19 @@ import android.location.LocationManager
 import android.os.SystemClock
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
@@ -31,6 +37,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -45,6 +52,12 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -62,6 +75,8 @@ import com.dentex.troller.MainViewModel
 import com.dentex.troller.ble.ConnectionState
 import com.dentex.troller.chart.BoatPosition
 import com.dentex.troller.chart.ChartGeoJson
+import com.dentex.troller.chart.ChartKind
+import com.dentex.troller.chart.ChartLayer
 import com.dentex.troller.chart.ChartStore
 import com.dentex.troller.chart.ChartStyle
 import com.dentex.troller.chart.PhoneFix
@@ -90,7 +105,7 @@ import kotlinx.coroutines.delay
 fun ChartScreen(viewModel: MainViewModel, onOpenConnect: () -> Unit) {
     val chart by viewModel.chartFile.collectAsStateWithLifecycle()
     val rainbowFile by viewModel.rainbowFile.collectAsStateWithLifecycle()
-    val showRainbow by viewModel.showRainbow.collectAsStateWithLifecycle()
+    val layer by viewModel.chartLayer.collectAsStateWithLifecycle()
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val route by viewModel.routeDraft.collectAsStateWithLifecycle()
     val importer = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -108,11 +123,16 @@ fun ChartScreen(viewModel: MainViewModel, onOpenConnect: () -> Unit) {
     }
 
     val editable = state.missionProgress.phase != MissionProgress.Phase.UPLOADING
+    val installedKinds = setOfNotNull(ChartKind.DEPTHS, rainbowFile?.let { ChartKind.RAINBOW })
     ChartView(
         chart = installed,
-        rainbow = rainbowFile?.takeIf { showRainbow },
-        rainbowInstalled = rainbowFile != null,
-        onRainbowClick = { if (rainbowFile == null) import() else viewModel.setShowRainbow(!showRainbow) },
+        rainbow = rainbowFile?.takeIf { layer == ChartLayer.RAINBOW },
+        layer = layer,
+        installedKinds = installedKinds,
+        // A layer whose file is missing opens the file picker; importing it switches to it.
+        onPickLayer = { picked ->
+            if (picked.needs == null || picked.needs in installedKinds) viewModel.setChartLayer(picked) else import()
+        },
         onStop = viewModel::requestStop,
         link = when {
             // The transport only accepts writes once the link is ready, so STOP is offered only then.
@@ -133,8 +153,9 @@ fun ChartScreen(viewModel: MainViewModel, onOpenConnect: () -> Unit) {
 private fun ChartView(
     chart: ChartStore.InstalledChart,
     rainbow: ChartStore.InstalledChart?,
-    rainbowInstalled: Boolean,
-    onRainbowClick: () -> Unit,
+    layer: ChartLayer,
+    installedKinds: Set<ChartKind>,
+    onPickLayer: (ChartLayer) -> Unit,
     onStop: () -> Unit,
     link: LinkBadge,
     onOpenConnect: () -> Unit,
@@ -311,13 +332,10 @@ private fun ChartView(
                 LinkBadge.RECONNECTING -> ReconnectingButton(onClick = onOpenConnect)
                 LinkBadge.NO_CONNECTION -> NoConnectionButton(onClick = onOpenConnect)
             }
-            FilterChip(
-                selected = rainbow != null,
-                onClick = onRainbowClick,
-                label = { Text(if (rainbowInstalled) "Rainbow" else "Add rainbow layer") },
-                colors = FilterChipDefaults.filterChipColors(
-                    containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
-                ),
+            LayersMenu(
+                layer = layer,
+                installed = { it.needs == null || it.needs in installedKinds },
+                onPick = onPickLayer,
             )
             if (rainbow != null) RainbowLegend()
             if (!locationAllowed) {
@@ -428,6 +446,74 @@ private fun phoneLocation(context: Context, allowed: Boolean): Location? {
         }
     }
     return location
+}
+
+/** The layers button; tapping it opens the list of chart layers below it. */
+@Composable
+private fun LayersMenu(layer: ChartLayer, installed: (ChartLayer) -> Boolean, onPick: (ChartLayer) -> Unit) {
+    var open by rememberSaveable { mutableStateOf(false) }
+    Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Surface(
+            onClick = { open = !open },
+            shape = CircleShape,
+            color = if (open) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
+            shadowElevation = 2.dp,
+            modifier = Modifier.size(48.dp).semantics { contentDescription = "Map layers" },
+        ) {
+            val ink = MaterialTheme.colorScheme.onSurface
+            Canvas(modifier = Modifier.padding(12.dp)) { drawLayersIcon(ink) }
+        }
+        if (open) {
+            Surface(
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
+                shape = MaterialTheme.shapes.small,
+                shadowElevation = 2.dp,
+            ) {
+                Column(modifier = Modifier.width(IntrinsicSize.Max).padding(vertical = 4.dp)) {
+                    ChartLayer.entries.forEach { option ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .selectable(selected = option == layer, role = Role.RadioButton) {
+                                    open = false
+                                    onPick(option)
+                                }
+                                .padding(start = 4.dp, end = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            RadioButton(selected = option == layer, onClick = null, modifier = Modifier.padding(10.dp))
+                            Column {
+                                Text(option.title, style = MaterialTheme.typography.bodyMedium)
+                                if (!installed(option)) {
+                                    Text(
+                                        "Tap to add the file",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** Two stacked map sheets, the usual "layers" symbol. */
+private fun DrawScope.drawLayersIcon(ink: Color) {
+    val w = size.width
+    val h = size.height
+    fun sheet(top: Float) = androidx.compose.ui.graphics.Path().apply {
+        moveTo(w * 0.5f, top)
+        lineTo(w, top + h * 0.25f)
+        lineTo(w * 0.5f, top + h * 0.5f)
+        lineTo(0f, top + h * 0.25f)
+        close()
+    }
+    val stroke = Stroke(width = w * 0.09f, join = StrokeJoin.Round)
+    drawPath(sheet(h * 0.32f), ink, style = stroke)
+    drawPath(sheet(h * 0.05f), ink)
 }
 
 /** Colour stops of the rainbow layer that occur in the Adriatic (it is nowhere deeper than about 1250 m). */
