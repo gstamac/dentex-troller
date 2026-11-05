@@ -495,6 +495,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         goTo.start(target)?.let(::notifyUser)
     }
 
+    /**
+     * Follows a whole route: uploads its waypoints as the motor's route and switches the motor
+     * to navigation mode, so it steers to the first waypoint and on along the route. The chart
+     * asks for a confirmation first.
+     */
+    fun followRoute(waypoints: List<Waypoint>, name: String, skipped: Int = 0) {
+        goTo.start(waypoints, name, skipped)?.let(::notifyUser)
+    }
+
     /** Ends the go-to; sends manual mode when navigation mode was sent. */
     fun cancelGoTo() {
         goTo.cancel()
@@ -638,6 +647,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         editPins { it.delete(id) }
     }
 
+    /** The zoom the chart had when it last stopped moving, or null before the first time. */
+    val chartZoom: Double?
+        get() = chartSettings.getFloat(KEY_CHART_ZOOM, Float.NaN).toDouble().takeIf { !it.isNaN() }
+
+    fun saveChartZoom(zoom: Double) {
+        chartSettings.edit().putFloat(KEY_CHART_ZOOM, zoom.toFloat()).apply()
+    }
+
     fun setShowPins(show: Boolean) {
         _showPins.value = show
         chartSettings.edit().putBoolean(KEY_SHOW_PINS, show).apply()
@@ -754,6 +771,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         const val KEY_SHOW_RAINBOW = "show_rainbow"
         const val KEY_CHART_LAYER = "layer"
         const val KEY_SHOW_PINS = "show_pins"
+        const val KEY_CHART_ZOOM = "zoom"
 
         /** A GPX file of pins is a few kilobytes; this only guards against picking the wrong file. */
         const val MAX_GPX_BYTES = 20 * 1_048_576

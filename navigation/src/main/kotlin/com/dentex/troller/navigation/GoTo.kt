@@ -13,13 +13,28 @@ import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.sin
 
-/** Where a go-to stands. */
-data class GoToState(val phase: Phase, val target: Waypoint? = null, val message: String? = null) {
+/**
+ * Where a go-to stands.
+ *
+ * @param target the first waypoint: the one point of a go-to, or the start of a followed route.
+ * @param waypoints every waypoint sent to the motor; one for a go-to.
+ * @param name the name of a followed route, or null for a go-to.
+ * @param skipped how many waypoints at the start of a followed route were left out, because the
+ *   boat was already on the route past them; [waypoints] holds the rest.
+ */
+data class GoToState(
+    val phase: Phase,
+    val target: Waypoint? = null,
+    val message: String? = null,
+    val waypoints: List<Waypoint> = listOfNotNull(target),
+    val name: String? = null,
+    val skipped: Int = 0,
+) {
     enum class Phase {
         /** Nothing is happening. */
         IDLE,
 
-        /** The target is being uploaded as a one-waypoint route. */
+        /** The target (a one-waypoint route) or the followed route is being uploaded. */
         UPLOADING,
 
         /** Navigation mode was sent; waiting for the motor to report it. */
@@ -37,14 +52,22 @@ data class GoToState(val phase: Phase, val target: Waypoint? = null, val message
 
     /** True while the go-to is starting or the motor is navigating to the target. */
     val active: Boolean get() = phase == Phase.UPLOADING || phase == Phase.STARTING || phase == Phase.UNDER_WAY
+
+    /** True when a whole route is followed rather than one point. */
+    val followsRoute: Boolean get() = name != null
+
+    /** The waypoint the motor heads for, from the index it reports; the first one when unknown. */
+    fun heading(reportedIndex: Int?): Waypoint? =
+        waypoints.getOrNull(reportedIndex ?: 0) ?: waypoints.firstOrNull()
 }
 
 /**
- * Moves the boat to one position, the way the Helmsman application starts a route.
+ * Moves the boat to one position, or along a route, the way the Helmsman application starts a route.
  *
  * The motor has no "go to" command. Helmsman uploads the waypoints and, one second after the
- * motor acknowledges them, sends navigation mode. This class does the same with a single
- * waypoint, and adds the checks that the motor never moves on a guess:
+ * motor acknowledges them, sends navigation mode. This class does the same, with a single
+ * waypoint for a go-to or all of a route's waypoints to follow it, and adds the checks that the
+ * motor never moves on a guess:
  *
  *  - Navigation is sent once, and only after the upload was acknowledged. It is never repeated:
  *    when the motor does not report navigation mode within [CONFIRM_TIMEOUT_MILLIS], the go-to
@@ -95,11 +118,22 @@ class GoToTarget(
      *
      * @return null when the go-to started, otherwise why it was refused.
      */
-    fun start(target: Waypoint): String? {
+    fun start(target: Waypoint): String? = start(listOf(target), name = null)
+
+    /**
+     * Starts moving the boat along [waypoints], from the first: a route called [name], or one
+     * point when [name] is null. [skipped] says how many waypoints of the route came before
+     * [waypoints], for the numbers on screen.
+     *
+     * @return null when it started, otherwise why it was refused.
+     */
+    fun start(waypoints: List<Waypoint>, name: String?, skipped: Int = 0): String? {
+        if (waypoints.isEmpty()) return "The route has no waypoints."
         if (stateFlow.value.active) return "A go-to is already running. Cancel it first."
         if (navigating.value == true) return "The motor is already navigating. Cancel that first."
-        if (!startUpload(Route(listOf(target)))) return "The target could not be uploaded."
-        stateFlow.value = GoToState(GoToState.Phase.UPLOADING, target)
+        if (!startUpload(Route(waypoints))) return "The route could not be uploaded."
+        val base = GoToState(GoToState.Phase.IDLE, waypoints.first(), waypoints = waypoints, name = name, skipped = skipped)
+        stateFlow.value = base.copy(phase = GoToState.Phase.UPLOADING)
         job = scope.launch {
             val uploaded = withTimeoutOrNull(UPLOAD_TIMEOUT_MILLIS) {
                 uploadProgress.first {
@@ -113,13 +147,13 @@ class GoToTarget(
                 MissionProgress.Phase.FAILED -> return@launch fail(uploaded.message ?: "The upload failed.")
                 null -> {
                     cancelUpload()
-                    return@launch fail("The motor did not take the target in time.")
+                    return@launch fail("The motor did not take the route in time.")
                 }
                 else -> return@launch fail("The upload was stopped.")
             }
             // Helmsman waits a second between the acknowledgement and the mode change.
             delay(START_DELAY_MILLIS)
-            stateFlow.value = GoToState(GoToState.Phase.STARTING, target)
+            stateFlow.value = base.copy(phase = GoToState.Phase.STARTING, message = null)
             if (!sendNavigation()) return@launch fail("Navigation mode could not be sent.")
             val confirmed = withTimeoutOrNull(CONFIRM_TIMEOUT_MILLIS) { navigating.first { it == true } }
             if (confirmed == null) {
@@ -133,16 +167,16 @@ class GoToTarget(
                 null -> "The motor reports no speed. Use + if the boat does not move."
                 else -> null
             }
-            stateFlow.value = GoToState(GoToState.Phase.UNDER_WAY, target, note)
+            stateFlow.value = base.copy(phase = GoToState.Phase.UNDER_WAY, message = note)
             navigating.first { it != true }
             // Left by itself, for example on arrival. Anchor mode holds the spot with the
             // propeller, so it is left alone; anything else gets the stop command.
             stateFlow.value = if (anchored()) {
-                GoToState(GoToState.Phase.ENDED, target, "The motor left navigation mode and is anchoring.")
+                base.copy(phase = GoToState.Phase.ENDED, message = "The motor left navigation mode and is anchoring.")
             } else if (sendStop()) {
-                GoToState(GoToState.Phase.ENDED, target, "The motor left navigation mode, so it was stopped.")
+                base.copy(phase = GoToState.Phase.ENDED, message = "The motor left navigation mode, so it was stopped.")
             } else {
-                GoToState(GoToState.Phase.FAILED, target, "The motor left navigation mode and the stop could not be sent. Use STOP.")
+                base.copy(phase = GoToState.Phase.FAILED, message = "The motor left navigation mode and the stop could not be sent. Use STOP.")
             }
         }
         return null
@@ -160,19 +194,19 @@ class GoToTarget(
         val navigationSent = current.phase == GoToState.Phase.STARTING || current.phase == GoToState.Phase.UNDER_WAY
         if (current.phase == GoToState.Phase.UPLOADING) cancelUpload()
         if (!navigationSent && navigating.value != true) {
-            stateFlow.value = GoToState(GoToState.Phase.ENDED, current.target, "Cancelled. The motor was not started.")
+            stateFlow.value = current.copy(phase = GoToState.Phase.ENDED, message = "Cancelled. The motor was not started.")
             return
         }
-        stateFlow.value = GoToState(GoToState.Phase.ENDED, current.target, "Cancelling…")
+        stateFlow.value = current.copy(phase = GoToState.Phase.ENDED, message = "Cancelling…")
         job = scope.launch {
             val manual = sendManual()
             delay(STOP_AFTER_MANUAL_MILLIS)
             // The stop goes out even when manual mode could not be sent.
             val stopped = sendStop()
             stateFlow.value = when {
-                manual && stopped -> GoToState(GoToState.Phase.ENDED, current.target, "Navigation cancelled and the motor stopped.")
-                stopped -> GoToState(GoToState.Phase.FAILED, current.target, "The motor was stopped, but manual mode could not be sent.")
-                else -> GoToState(GoToState.Phase.FAILED, current.target, "The stop could not be sent. Use STOP.")
+                manual && stopped -> current.copy(phase = GoToState.Phase.ENDED, message = "Navigation cancelled and the motor stopped.")
+                stopped -> current.copy(phase = GoToState.Phase.FAILED, message = "The motor was stopped, but manual mode could not be sent.")
+                else -> current.copy(phase = GoToState.Phase.FAILED, message = "The stop could not be sent. Use STOP.")
             }
         }
     }
@@ -188,25 +222,17 @@ class GoToTarget(
         if (!navigationSent && navigating.value != true) return
         // Stops the watcher too, so leaving navigation for anchor does not send the stop command.
         job?.cancel()
-        stateFlow.value = GoToState(GoToState.Phase.ENDED, current.target, "Switching to anchor mode…")
+        stateFlow.value = current.copy(phase = GoToState.Phase.ENDED, message = "Switching to anchor mode…")
         job = scope.launch {
             if (!sendAnchor()) {
-                stateFlow.value = GoToState(
-                    GoToState.Phase.FAILED,
-                    current.target,
-                    "Anchor mode could not be sent. The motor may still be navigating.",
-                )
+                stateFlow.value = current.copy(phase = GoToState.Phase.FAILED, message = "Anchor mode could not be sent. The motor may still be navigating.")
                 return@launch
             }
             val left = withTimeoutOrNull(CONFIRM_TIMEOUT_MILLIS) { navigating.first { it != true } }
             stateFlow.value = if (left != null && anchored()) {
-                GoToState(GoToState.Phase.ENDED, current.target, "The motor is anchoring where the boat is.")
+                current.copy(phase = GoToState.Phase.ENDED, message = "The motor is anchoring where the boat is.")
             } else {
-                GoToState(
-                    GoToState.Phase.FAILED,
-                    current.target,
-                    "The motor did not report anchor mode. Check the motor; nothing was sent again.",
-                )
+                current.copy(phase = GoToState.Phase.FAILED, message = "The motor did not report anchor mode. Check the motor; nothing was sent again.")
             }
         }
     }
@@ -231,23 +257,19 @@ class GoToTarget(
                 job?.cancel()
                 job = null
                 cancelUpload()
-                stateFlow.value = GoToState(GoToState.Phase.FAILED, current.target, "The link was lost during the upload. The motor was not started.")
+                stateFlow.value = current.copy(phase = GoToState.Phase.FAILED, message = "The link was lost during the upload. The motor was not started.")
             }
             GoToState.Phase.STARTING -> {
                 job?.cancel()
                 job = null
-                stateFlow.value = GoToState(
-                    GoToState.Phase.FAILED,
-                    current.target,
-                    "The link was lost just after navigation mode was sent. The motor may be moving.",
-                )
+                stateFlow.value = current.copy(phase = GoToState.Phase.FAILED, message = "The link was lost just after navigation mode was sent. The motor may be moving.")
             }
             else -> Unit
         }
     }
 
     private fun fail(message: String) {
-        stateFlow.value = GoToState(GoToState.Phase.FAILED, stateFlow.value.target, message)
+        stateFlow.value = stateFlow.value.copy(phase = GoToState.Phase.FAILED, message = message)
     }
 
     companion object {

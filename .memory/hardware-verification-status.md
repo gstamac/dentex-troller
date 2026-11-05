@@ -31,6 +31,11 @@ only STOP (11) stopped it. So the go-to now sends one Speed up when the speed is
 Manual then STOP. Still unknown: what the motor does on reaching the target (the app stops it
 unless it reports Anchor).
 
+"Follow route" (2026-11-05) uploads a whole route and sends navigation once. The chart shows the
+waypoint the motor heads for from `RAW_IMU.zacc` (Helmsman's "target point"), read as a 0-based
+index into the uploaded route. Not yet confirmed on the motor: that it is 0-based, and that the
+motor goes through every waypoint in order.
+
 The `simulator` module (sim build, 2026-11-05) models these observations. When a field test
 shows different motor behaviour, change `SimulatedMotor` and its tests to match, so land tests stay
 honest.

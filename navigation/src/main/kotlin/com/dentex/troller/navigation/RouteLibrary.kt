@@ -121,37 +121,65 @@ fun distanceMeters(a: Waypoint, b: Waypoint): Double {
     return 2 * EARTH_RADIUS_METERS * asin(sqrt(h))
 }
 
+/** The section of a route from waypoint [index] to [index] + 1, and the [point] on it closest to a position. */
+data class RouteSection(val index: Int, val point: Waypoint, val meters: Double)
+
 /**
- * The point of the route line closest to [from], or null for a route without waypoints.
+ * The section of the route line closest to [from], or null for a route of fewer than two waypoints.
+ * Where two sections meet at a waypoint, the earlier one is taken.
  *
  * Works on a flat projection around [from], which is exact enough at the scale of a trolling route.
  */
-fun nearestPointOnRoute(route: List<Waypoint>, from: Waypoint): Waypoint? {
-    if (route.isEmpty()) return null
-    if (route.size == 1) return route.first()
+fun nearestSection(route: List<Waypoint>, from: Waypoint): RouteSection? {
+    if (route.size < 2) return null
     val scale = cos(Math.toRadians(from.latitude))
     fun x(p: Waypoint) = (p.longitude - from.longitude) * scale
     fun y(p: Waypoint) = p.latitude - from.latitude
-    var best = route.first()
+    var best: RouteSection? = null
     var bestSquared = Double.MAX_VALUE
-    route.zipWithNext { a, b ->
+    for (index in 0 until route.lastIndex) {
+        val a = route[index]
+        val b = route[index + 1]
         val ax = x(a)
         val ay = y(a)
         val dx = x(b) - ax
         val dy = y(b) - ay
         val lengthSquared = dx * dx + dy * dy
-        // The fraction along a→b of the foot of the perpendicular from the origin, kept on the segment.
+        // The fraction along a→b of the foot of the perpendicular from the origin, kept on the section.
         val t = if (lengthSquared == 0.0) 0.0 else (-(ax * dx + ay * dy) / lengthSquared).coerceIn(0.0, 1.0)
         val px = ax + t * dx
         val py = ay + t * dy
         val squared = px * px + py * py
         if (squared < bestSquared) {
             bestSquared = squared
-            best = Waypoint(
+            val point = Waypoint(
                 latitude = a.latitude + t * (b.latitude - a.latitude),
                 longitude = a.longitude + t * (b.longitude - a.longitude),
             )
+            best = RouteSection(index, point, distanceMeters(from, point))
         }
     }
     return best
 }
+
+/** The point of the route line closest to [from], or null for a route without waypoints. */
+fun nearestPointOnRoute(route: List<Waypoint>, from: Waypoint): Waypoint? =
+    nearestSection(route, from)?.point ?: route.firstOrNull()
+
+/**
+ * The index of the waypoint to follow the route from, for a boat at [from].
+ *
+ * Far from the route that is 0, the start. Within [joinMeters] of the route line the boat is
+ * already on it, so it carries on with the waypoint that ends the closest section, or with the
+ * one after that when it is already at that waypoint too.
+ */
+fun joinIndex(route: List<Waypoint>, from: Waypoint, joinMeters: Double = JOIN_ROUTE_METERS): Int {
+    val section = nearestSection(route, from) ?: return 0
+    if (section.meters > joinMeters) return 0
+    var next = section.index + 1
+    if (next < route.lastIndex && distanceMeters(from, route[next]) <= joinMeters) next++
+    return next
+}
+
+/** How close to a route the boat must be to join it instead of going to its start. */
+const val JOIN_ROUTE_METERS = 10.0

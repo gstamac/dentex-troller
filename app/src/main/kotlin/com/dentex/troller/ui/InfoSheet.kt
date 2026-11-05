@@ -49,7 +49,8 @@ import java.util.Locale
  *
  * @param title the one line shown while the sheet is pulled down.
  * @param details the lines shown once it is pulled up, above the distance.
- * @param at the spot the info is about; the distance is measured to it.
+ * @param at the spot the info is about; the distance is measured to it and "Move boat here" goes there.
+ *   For a route it is the first waypoint, and the distances are to the start and the nearest point.
  * @param marked true when the chart draws a ring at [at], for spots that have no symbol of their own.
  */
 internal data class MapInfo(
@@ -75,7 +76,7 @@ internal fun InfoSheet(
     onReset: () -> Unit,
     onDeletePin: (Pin) -> Unit,
     /** Starts a go-to to the spot; null when the boat cannot be moved now. */
-    onMoveHere: ((Waypoint) -> Unit)?,
+    onMoveHere: ((MapInfo) -> Unit)?,
 ) {
     var expanded by rememberSaveable { mutableStateOf(false) }
     val threshold = with(LocalDensity.current) { DRAG_THRESHOLD_DP.dp.toPx() }
@@ -133,10 +134,15 @@ internal fun InfoSheet(
                 val at = info.at
                 if (at != null && onMoveHere != null) {
                     FilledTonalButton(
-                        onClick = { onMoveHere(at) },
+                        onClick = { onMoveHere(info) },
                         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
                         modifier = Modifier.padding(end = 12.dp).height(34.dp),
-                    ) { Text("Move boat here", style = MaterialTheme.typography.labelLarge) }
+                    ) {
+                        Text(
+                            if (info.routeId != null) "Follow route" else "Move boat here",
+                            style = MaterialTheme.typography.labelLarge,
+                        )
+                    }
                 }
             }
             AnimatedVisibility(visible = expanded) {

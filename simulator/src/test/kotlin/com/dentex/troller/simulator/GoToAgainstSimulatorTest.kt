@@ -105,6 +105,64 @@ class GoToAgainstSimulatorTest {
     }
 
     @Test
+    fun aRouteIsFollowedThroughEveryWaypoint() = runTest {
+        val rig = Rig(this)
+        rig.simulator.start()
+        advanceTimeBy(3_000)
+        runCurrent()
+        val start = SimulatedMotor.START_LATITUDE to SimulatedMotor.START_LONGITUDE
+        val route = listOf(
+            Waypoint(start.first + 0.0009, start.second),
+            Waypoint(start.first + 0.0009, start.second + 0.0012),
+            Waypoint(start.first, start.second + 0.0012),
+        )
+
+        assertEquals(null, rig.goTo.start(route, "Square"))
+        advanceTimeBy(5_000)
+        runCurrent()
+        assertEquals(GoToState.Phase.UNDER_WAY, rig.goTo.state.value.phase)
+        assertEquals(3, rig.simulator.motor.route.size)
+
+        advanceTimeBy(30 * 60_000)
+        runCurrent()
+        assertEquals(2, rig.controller.telemetry.value.targetPoint)
+        assertEquals(SimulatedMotor.Mode.ANCHOR, rig.simulator.motor.mode)
+        val left = SimulatedMotor.distanceMeters(
+            rig.simulator.motor.latitude, rig.simulator.motor.longitude, route.last().latitude, route.last().longitude,
+        )
+        assertTrue("stopped $left m from the last waypoint", left < 15)
+    }
+
+    @Test
+    fun aBoatAlreadyOnTheRouteJoinsItInsteadOfGoingBackToTheStart() = runTest {
+        val rig = Rig(this)
+        val start = SimulatedMotor.START_LATITUDE to SimulatedMotor.START_LONGITUDE
+        // The boat sits halfway along the first section.
+        val route = listOf(
+            Waypoint(start.first, start.second - 0.0012),
+            Waypoint(start.first, start.second + 0.0012),
+            Waypoint(start.first + 0.0009, start.second + 0.0012),
+        )
+        val join = com.dentex.troller.navigation.joinIndex(route, Waypoint(start.first, start.second))
+        assertEquals(1, join)
+
+        rig.simulator.start()
+        advanceTimeBy(3_000)
+        assertEquals(null, rig.goTo.start(route.drop(join), "Line", skipped = join))
+        advanceTimeBy(5_000)
+        runCurrent()
+        assertEquals(route.drop(1).map { it.latitude.toFloat().toDouble() }, rig.simulator.motor.route.map { it.first })
+        assertEquals(1, rig.goTo.state.value.skipped)
+
+        advanceTimeBy(30 * 60_000)
+        runCurrent()
+        val left = SimulatedMotor.distanceMeters(
+            rig.simulator.motor.latitude, rig.simulator.motor.longitude, route.last().latitude, route.last().longitude,
+        )
+        assertTrue("stopped $left m from the last waypoint", left < 15)
+    }
+
+    @Test
     fun stopGoToLeavesTheMotorInManualWithThePropellerOff() = runTest {
         val rig = Rig(this)
         rig.simulator.start()

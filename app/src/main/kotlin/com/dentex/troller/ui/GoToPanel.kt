@@ -26,31 +26,37 @@ import com.dentex.troller.navigation.bearingDegrees
 import com.dentex.troller.navigation.distanceMeters
 import java.util.Locale
 
+/**
+ * What "Move boat here" or "Follow route" asks for: one point, or a route called [name]. A route
+ * the boat is already on is joined: [skipped] waypoints are left out and [waypoints] is the rest.
+ */
+internal data class GoToRequest(val waypoints: List<Waypoint>, val name: String? = null, val skipped: Int = 0) {
+    val target: Waypoint get() = waypoints.first()
+    val followsRoute: Boolean get() = name != null
+}
+
 /** The go-to and what the chart may do with it. */
 internal class GoToActions(
     val state: GoToState,
     /** Why a go-to cannot start now, or null when it can. */
     val blockedBecause: String?,
-    val start: (Waypoint) -> Unit,
+    val start: (GoToRequest) -> Unit,
     val cancel: () -> Unit,
     val anchor: () -> Unit,
     val dismiss: () -> Unit,
 )
 
-/**
- * The panel for a target picked with a long press, and for the go-to while it starts, runs and
- * ends. [picked] is the target that has not been started yet.
- */
+/** The panel for a go-to or a followed route while it starts, runs and ends. */
 @Composable
 internal fun GoToPanel(
     actions: GoToActions,
-    picked: Waypoint?,
     boat: BoatPosition?,
     telemetry: MotorTelemetry,
-    onMoveHere: () -> Unit,
 ) {
     val state = actions.state
-    val target = if (state.phase == GoToState.Phase.IDLE) picked else state.target
+    // A followed route shows the waypoint the motor heads for.
+    val target = state.heading(telemetry.targetPoint)
+    val route = state.followsRoute && state.phase != GoToState.Phase.IDLE
     val motorNavigating = telemetry.reportedMode == ReportedMode.NAVIGATION
 
     Surface(
@@ -63,16 +69,21 @@ internal fun GoToPanel(
             Text(
                 text = when (state.phase) {
                     GoToState.Phase.IDLE -> "Target"
-                    GoToState.Phase.UPLOADING -> "Sending the target to the motor…"
+                    GoToState.Phase.UPLOADING -> if (route) "Sending ${state.name} to the motor…" else "Sending the target to the motor…"
                     GoToState.Phase.STARTING -> "Switching the motor to navigation…"
-                    GoToState.Phase.UNDER_WAY -> "Navigating to the target"
-                    GoToState.Phase.ENDED -> "Go-to ended"
-                    GoToState.Phase.FAILED -> "Go-to did not start"
+                    GoToState.Phase.UNDER_WAY -> if (route) "Following ${state.name}" else "Navigating to the target"
+                    GoToState.Phase.ENDED -> if (route) "Route ended" else "Go-to ended"
+                    GoToState.Phase.FAILED -> if (route) "Route did not start" else "Go-to did not start"
                 },
                 style = MaterialTheme.typography.titleSmall,
                 color = if (state.phase == GoToState.Phase.FAILED) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
             )
             val lines = buildList {
+                if (route && state.phase == GoToState.Phase.UNDER_WAY) {
+                    // Numbered as on the phone's route, counting the waypoints a join left out.
+                    val index = (telemetry.targetPoint ?: 0).coerceIn(0, state.waypoints.lastIndex)
+                    add("Heading for waypoint ${state.skipped + index + 1} of ${state.skipped + state.waypoints.size}")
+                }
                 target?.let { add(targetLine(it, boat)) }
                 state.message?.let(::add)
                 if (state.phase == GoToState.Phase.UNDER_WAY && telemetry.motorOn == false) {
@@ -80,10 +91,6 @@ internal fun GoToPanel(
                 }
                 if (state.phase == GoToState.Phase.ENDED || state.phase == GoToState.Phase.FAILED) {
                     telemetry.reportedMode?.let { add("The motor reports: ${it.displayName}.") }
-                }
-                if (state.phase == GoToState.Phase.IDLE) {
-                    add(actions.blockedBecause ?: "The motor will steer there by itself.")
-                    add("Tap the chart to cancel.")
                 }
             }
             Text(
@@ -97,11 +104,7 @@ internal fun GoToPanel(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 when (state.phase) {
-                    GoToState.Phase.IDLE -> {
-                        Button(onClick = onMoveHere, enabled = actions.blockedBecause == null && picked != null) {
-                            Text("Move boat here")
-                        }
-                    }
+                    GoToState.Phase.IDLE -> Unit
                     GoToState.Phase.UPLOADING, GoToState.Phase.STARTING, GoToState.Phase.UNDER_WAY -> {
                         // Anchoring only makes sense once navigation mode was sent.
                         if (state.phase != GoToState.Phase.UPLOADING) {
@@ -131,20 +134,37 @@ internal fun GoToPanel(
 
 /** Asks before the boat is moved: says what will happen and how far it is. */
 @Composable
-internal fun ConfirmGoToDialog(target: Waypoint, boat: BoatPosition?, onConfirm: () -> Unit, onDismiss: () -> Unit) {
+internal fun ConfirmGoToDialog(request: GoToRequest, boat: BoatPosition?, onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    val count = request.waypoints.size
+    val length = request.waypoints.zipWithNext { a, b -> distanceMeters(a, b) }.sum()
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Move the boat here?") },
+        title = { Text(if (request.followsRoute) "Follow ${request.name}?" else "Move the boat here?") },
         text = {
             Text(
-                targetLine(target, boat) + "\n\n" +
-                    "The route stored on the motor is replaced by this point and the motor switches to " +
-                    "navigation mode. The boat starts moving by itself, at the last speed or at speed 1 if it was 0. " +
-                    "Your routes on the phone are not changed.\n\n" +
-                    "Stop go-to switches the motor to manual and stops it. STOP stays at the top right.",
+                if (request.followsRoute) {
+                    val join = if (request.skipped > 0) {
+                        "The boat is on the route, so it joins at waypoint ${request.skipped + 1} of ${request.skipped + count}.\n"
+                    } else {
+                        ""
+                    }
+                    join +
+                        "${if (count == 1) "1 waypoint" else "$count waypoints"} to go · ${formatDistance(length)}\n" +
+                        "First: " + targetLine(request.target, boat) + "\n\n" +
+                        "The route stored on the motor is replaced by this route and the motor switches to " +
+                        "navigation mode. The boat steers to waypoint ${request.skipped + 1} and on along the route by itself, at the " +
+                        "last speed or at speed 1 if it was 0.\n\n" +
+                        "Stop go-to switches the motor to manual and stops it. STOP stays at the top right."
+                } else {
+                    targetLine(request.target, boat) + "\n\n" +
+                        "The route stored on the motor is replaced by this point and the motor switches to " +
+                        "navigation mode. The boat starts moving by itself, at the last speed or at speed 1 if it was 0. " +
+                        "Your routes on the phone are not changed.\n\n" +
+                        "Stop go-to switches the motor to manual and stops it. STOP stays at the top right."
+                },
             )
         },
-        confirmButton = { TextButton(onClick = onConfirm) { Text("Move boat") } },
+        confirmButton = { TextButton(onClick = onConfirm) { Text(if (request.followsRoute) "Follow route" else "Move boat") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
 }
@@ -162,6 +182,8 @@ internal fun distanceAndBearing(from: Waypoint, to: Waypoint): String {
     return String.format(Locale.US, "%s · bearing %03d°", formatDistance(distanceMeters(from, to)), bearing)
 }
 
-/** Metres below a tenth of a nautical mile, nautical miles above. */
+/** Metres below one nautical mile, nautical miles from there. */
 internal fun formatDistance(meters: Double): String =
-    if (meters < 185.2) String.format(Locale.US, "%.0f m", meters) else String.format(Locale.US, "%.2f NM", meters / 1852.0)
+    if (meters < METERS_PER_NM) String.format(Locale.US, "%.0f m", meters) else String.format(Locale.US, "%.2f NM", meters / METERS_PER_NM)
+
+private const val METERS_PER_NM = 1852.0

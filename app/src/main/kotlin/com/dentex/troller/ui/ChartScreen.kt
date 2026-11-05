@@ -92,6 +92,7 @@ import com.dentex.troller.haswing.CommandGateState
 import com.dentex.troller.haswing.MotorTelemetry
 import com.dentex.troller.haswing.ReportedMode
 import com.dentex.troller.navigation.GoToState
+import com.dentex.troller.navigation.joinIndex
 import com.dentex.troller.navigation.MissionProgress
 import com.dentex.troller.navigation.Pin
 import com.dentex.troller.navigation.PinLibrary
@@ -166,6 +167,8 @@ fun ChartScreen(viewModel: MainViewModel, onOpenConnect: () -> Unit) {
             else -> LinkBadge.NO_CONNECTION
         },
         onOpenConnect = onOpenConnect,
+        savedZoom = viewModel.chartZoom,
+        onZoomSettled = viewModel::saveChartZoom,
         telemetry = state.telemetry,
         routes = routes,
         routeActions = RouteActions(
@@ -195,7 +198,10 @@ fun ChartScreen(viewModel: MainViewModel, onOpenConnect: () -> Unit) {
                 state.telemetry.reportedMode == ReportedMode.NAVIGATION -> "The motor is already navigating."
                 else -> null
             },
-            start = viewModel::goTo,
+            start = { request ->
+                val name = request.name
+                if (name == null) viewModel.goTo(request.target) else viewModel.followRoute(request.waypoints, name, request.skipped)
+            },
             cancel = viewModel::cancelGoTo,
             anchor = viewModel::anchorGoTo,
             dismiss = viewModel::dismissGoTo,
@@ -236,6 +242,9 @@ private fun ChartView(
     onStop: () -> Unit,
     link: LinkBadge,
     onOpenConnect: () -> Unit,
+    /** The zoom to open at, from the last time; null the first time. */
+    savedZoom: Double?,
+    onZoomSettled: (Double) -> Unit,
     telemetry: MotorTelemetry,
     routes: RouteLibrary,
     pins: PinOverlay,
@@ -255,15 +264,10 @@ private fun ChartView(
     val currentPins by rememberUpdatedState(pins)
     var confirmDeletePin by remember { mutableStateOf<Pin?>(null) }
 
-    // A long press picks a target; "Move boat here" confirms it and starts the go-to.
-    var pickedTarget by remember { mutableStateOf<Waypoint?>(null) }
-    // The spot "Move boat here" asks about, from the go-to panel or the info sheet.
-    var confirmGoTo by remember { mutableStateOf<Waypoint?>(null) }
-    val currentGoTo by rememberUpdatedState(goTo)
-    LaunchedEffect(goTo.state.phase) {
-        if (goTo.state.phase != GoToState.Phase.IDLE) pickedTarget = null
-    }
-    val goToTarget = if (goTo.state.phase == GoToState.Phase.IDLE) pickedTarget else goTo.state.target
+    // What "Move boat here" or "Follow route" in the info panel asks to confirm.
+    var confirmGoTo by remember { mutableStateOf<GoToRequest?>(null) }
+    // While a route is followed, the line runs to the waypoint the motor reports it heads for.
+    val goToTarget = if (goTo.state.phase == GoToState.Phase.IDLE) null else goTo.state.heading(telemetry.targetPoint)
 
     // Route mode: taps edit routes instead of showing the depth.
     var routeMode by rememberSaveable { mutableStateOf(false) }
@@ -336,8 +340,17 @@ private fun ChartView(
             m.setLatLngBoundsForCameraTarget(LatLngBounds.from(north, east, south, west))
             m.cameraPosition = CameraPosition.Builder()
                 .target(LatLng(latitude ?: START_LATITUDE, longitude ?: START_LONGITUDE))
-                .zoom(if (hasPosition) FOLLOW_ZOOM else START_ZOOM)
+                .zoom(savedZoom ?: if (hasPosition) FOLLOW_ZOOM else START_ZOOM)
                 .build()
+            // Kept for the next start; saved only when it changed, as the camera also settles after following.
+            var lastZoom = m.cameraPosition.zoom
+            m.addOnCameraIdleListener {
+                val zoom = m.cameraPosition.zoom
+                if (zoom != lastZoom) {
+                    lastZoom = zoom
+                    onZoomSettled(zoom)
+                }
+            }
             m.addOnCameraMoveStartedListener { reason ->
                 if (reason == MapLibreMap.OnCameraMoveStartedListener.REASON_API_GESTURE) follow = false
             }
@@ -371,11 +384,6 @@ private fun ChartView(
                     }
                     return@addOnMapClickListener true
                 }
-                // A tap anywhere drops a target that was picked but not started.
-                if (pickedTarget != null && currentGoTo.state.phase == GoToState.Phase.IDLE) {
-                    pickedTarget = null
-                    return@addOnMapClickListener true
-                }
                 // The pin's tip is the spot and the icon rises above it, so the box reaches higher.
                 val pinBox = RectF(screen.x - reach, screen.y - reach, screen.x + reach, screen.y + 2.5f * reach)
                 val pinId = m.queryRenderedFeatures(pinBox, ChartStyle.LAYER_PIN).firstOrNull()?.getStringProperty("id")
@@ -390,7 +398,8 @@ private fun ChartView(
                 val onRoute = m.queryRenderedFeatures(box, ChartStyle.LAYER_ROUTE_POINTS, ChartStyle.LAYER_ROUTE_LINE).isNotEmpty()
                 val route = currentRoutes.selected
                 if (onRoute && route != null) {
-                    tapped = MapInfo("Route: ${route.name}", routeDetails(route), routeId = route.id)
+                    // "Move boat here" on a route goes to its first waypoint.
+                    tapped = MapInfo("Route: ${route.name}", routeDetails(route), at = route.waypoints.firstOrNull(), routeId = route.id)
                     return@addOnMapClickListener true
                 }
                 val mark = m.queryRenderedFeatures(box, ChartStyle.LAYER_SEAMARK_ICON, ChartStyle.LAYER_SEAMARK_DOT).firstOrNull()
@@ -407,24 +416,7 @@ private fun ChartView(
                     tapped = MapInfo(lines.first(), lines.drop(1) + positionLine(spot), at = spot, marked = true)
                     return@addOnMapClickListener true
                 }
-                val onLand = m.queryRenderedFeatures(screen, ChartStyle.LAYER_LAND).isNotEmpty()
-                val depth = m.queryRenderedFeatures(screen, ChartStyle.LAYER_DEPTH_AREA)
-                    .firstOrNull()?.getNumberProperty("depth")?.toInt()
-                val what = when {
-                    onLand -> "Land"
-                    depth != null -> "Depth ${ChartStyle.bandLabel(depth)}"
-                    else -> "No depth data here"
-                }
-                val spot = Waypoint(point.latitude, point.longitude)
-                tapped = MapInfo(what, listOf(positionLine(spot)), at = spot, marked = true)
-                true
-            }
-            m.addOnMapLongClickListener { point ->
-                // Route mode keeps its own gestures, and a running go-to has to be cancelled first.
-                if (currentRouteMode || currentGoTo.state.active) return@addOnMapLongClickListener false
-                if (currentGoTo.state.phase != GoToState.Phase.IDLE) currentGoTo.dismiss()
-                pickedTarget = Waypoint(point.latitude, point.longitude)
-                tapped = null
+                tapped = spotInfo(m, point)
                 true
             }
             // In route mode, a press that starts on the selected waypoint drags it instead of
@@ -512,10 +504,14 @@ private fun ChartView(
         style?.getSourceAs<GeoJsonSource>(ChartStyle.SOURCE_ROUTE_HIGHLIGHT)
             ?.setGeoJson(ChartGeoJson.routeLine(highlightedRoute?.waypoints ?: emptyList()))
     }
-    // While the boat can be moved, a tapped spot gets the same dashed line from the boat as a
-    // long-pressed target. It has its own ring already, so the go-to ring is left out.
+    // While the boat can be moved, a tapped spot gets the dashed line from the boat that a go-to
+    // has. It has its own ring already, so the go-to ring is left out.
     val canMove = goTo.blockedBecause == null
-    val infoSpot = tapped?.at?.takeIf { canMove && !routeMode && goToTarget == null }
+    // For a route, the line runs to the waypoint Follow route would head for first.
+    val joinSpot = highlightedRoute?.waypoints?.takeIf { it.isNotEmpty() }?.let { points ->
+        points[position?.let { joinIndex(points, Waypoint(it.latitude, it.longitude)) } ?: 0]
+    }
+    val infoSpot = (joinSpot ?: tapped?.at)?.takeIf { canMove && !routeMode && goToTarget == null }
     LaunchedEffect(style, goToTarget, infoSpot, position, goTo.state.active) {
         val json = if (goToTarget != null) {
             ChartGeoJson.goTo(goToTarget, position, goTo.state.active)
@@ -617,10 +613,8 @@ private fun ChartView(
             if (!routeMode && goToTarget != null) {
                 GoToPanel(
                     actions = goTo,
-                    picked = pickedTarget,
                     boat = position,
                     telemetry = telemetry,
-                    onMoveHere = { confirmGoTo = pickedTarget },
                 )
             } else if (routeMode) {
                 RoutePanel(
@@ -642,23 +636,36 @@ private fun ChartView(
                 boat = position,
                 onReset = { tapped = null },
                 onDeletePin = { confirmDeletePin = it },
-                onMoveHere = if (canMove) { spot -> confirmGoTo = spot } else null,
+                // A route is followed from its first waypoint, or joined where the boat already is
+                // on it (within JOIN_ROUTE_METERS); anything else is one point.
+                onMoveHere = if (canMove) {
+                    { picked ->
+                        val route = infoRoute
+                        confirmGoTo = when {
+                            route != null && route.waypoints.isNotEmpty() -> {
+                                val join = position?.let { joinIndex(route.waypoints, Waypoint(it.latitude, it.longitude)) } ?: 0
+                                GoToRequest(route.waypoints.drop(join), route.name, skipped = join)
+                            }
+                            picked.at != null -> GoToRequest(listOf(picked.at))
+                            else -> null
+                        }
+                    }
+                } else {
+                    null
+                },
             )
         }
         }
     }
 
-    confirmGoTo?.let { target ->
+    confirmGoTo?.let { request ->
         ConfirmGoToDialog(
-            target = target,
+            request = request,
             boat = position,
             onConfirm = {
                 confirmGoTo = null
                 // Checked again: the link may have dropped while the dialog was open.
-                if (goTo.blockedBecause == null) {
-                    goTo.start(target)
-                    tapped = null
-                }
+                if (goTo.blockedBecause == null) goTo.start(request)
             },
             onDismiss = { confirmGoTo = null },
         )
@@ -983,9 +990,24 @@ private const val DRAG_REACH_DP = 28f
 /** What the corner badge of the chart offers, following the state of the link to the motor. */
 private enum class LinkBadge { STOP, RECONNECTING, NO_CONNECTION }
 
+/** The depth, or land, at a spot on the chart. */
+private fun spotInfo(m: MapLibreMap, point: LatLng): MapInfo {
+    val screen = m.projection.toScreenLocation(point)
+    val onLand = m.queryRenderedFeatures(screen, ChartStyle.LAYER_LAND).isNotEmpty()
+    val depth = m.queryRenderedFeatures(screen, ChartStyle.LAYER_DEPTH_AREA)
+        .firstOrNull()?.getNumberProperty("depth")?.toInt()
+    val what = when {
+        onLand -> "Land"
+        depth != null -> "Depth ${ChartStyle.bandLabel(depth)}"
+        else -> "No depth data here"
+    }
+    val spot = Waypoint(point.latitude, point.longitude)
+    return MapInfo(what, listOf(positionLine(spot)), at = spot, marked = true)
+}
+
 /** What the sheet shows while nothing on the chart was tapped: the boat itself. */
 private fun boatInfo(position: BoatPosition?, telemetry: MotorTelemetry): MapInfo {
-    val hint = "Tap the chart for the depth, a seamark, a pin or the route. Press and hold to move the boat there."
+    val hint = "Tap the chart for the depth, a seamark, a pin or the route."
     if (position == null) return MapInfo("No boat position", listOf(hint))
     val source = if (position.source == PositionSource.PHONE) "phone GPS" else "motor GPS"
     val title = if (position.stale) "Boat · $source · no recent fix" else "Boat · $source"

@@ -43,7 +43,6 @@ import com.dentex.troller.navigation.RouteLibrary
 import com.dentex.troller.navigation.SavedRoute
 import java.text.DateFormat
 import java.util.Date
-import java.util.Locale
 
 /** The selected route and the route tools, shown at the bottom of the chart in route mode. */
 @Composable
@@ -206,11 +205,11 @@ private fun RoutesDialog(routes: RouteLibrary, actions: RouteActions, onDismiss:
     }
 }
 
-/** "3 waypoints · 1.25 NM" */
+/** "3 waypoints · 1.25 NM", or metres below one nautical mile. */
 private fun routeSummary(route: SavedRoute): String {
     val count = route.waypoints.size
     val points = if (count == 1) "1 waypoint" else "$count waypoints"
-    return if (count < 2) points else String.format(Locale.US, "%s · %.2f NM", points, route.lengthMeters / METERS_PER_NAUTICAL_MILE)
+    return if (count < 2) points else "$points · ${formatDistance(route.lengthMeters)}"
 }
 
 /** Switches route mode on the chart; a route line with three waypoints. */
@@ -240,4 +239,3 @@ internal fun RouteModeButton(active: Boolean, onClick: () -> Unit) {
     }
 }
 
-private const val METERS_PER_NAUTICAL_MILE = 1852.0

@@ -83,6 +83,37 @@ class GoToTest {
     }
 
     @Test
+    fun aFollowedRouteUploadsEveryWaypointAndKeepsItsName() = runTest {
+        val motor = Motor()
+        val goTo = newGoTo(motor)
+        val route = listOf(target, Waypoint(44.22, 14.80), Waypoint(44.23, 14.81))
+
+        assertNull(goTo.start(route, "Evening run"))
+        runCurrent()
+        assertEquals(listOf(Route(route)), motor.uploaded)
+        assertEquals("Evening run", goTo.state.value.name)
+        assertEquals(route[1], goTo.state.value.heading(1))
+        assertEquals(target, goTo.state.value.heading(null))
+
+        motor.acknowledge()
+        runCurrent()
+        advanceTimeBy(GoToTarget.START_DELAY_MILLIS + 1)
+        runCurrent()
+        motor.navigating.value = true
+        runCurrent()
+        assertEquals(GoToState.Phase.UNDER_WAY, goTo.state.value.phase)
+        assertEquals(route, goTo.state.value.waypoints)
+    }
+
+    @Test
+    fun anEmptyRouteIsRefused() = runTest {
+        val motor = Motor()
+        val goTo = newGoTo(motor)
+        assertNotNull(goTo.start(emptyList(), "Empty"))
+        assertTrue(motor.uploaded.isEmpty())
+    }
+
+    @Test
     fun failedUploadNeverSendsNavigation() = runTest {
         val motor = Motor()
         val goTo = newGoTo(motor)
