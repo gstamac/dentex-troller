@@ -73,4 +73,16 @@ class RouteLibraryTest {
         assertEquals(2 * distanceMeters(a, b), route.lengthMeters, 1e-6)
         assertEquals(640.0, distanceMeters(a, b), 15.0)
     }
+
+    @Test
+    fun theNearestPointCanLieBetweenTwoWaypoints() {
+        val route = listOf(Waypoint(44.0, 14.0), Waypoint(44.0, 14.2), Waypoint(44.2, 14.2))
+        val nearest = nearestPointOnRoute(route, Waypoint(44.05, 14.1))!!
+        assertEquals(44.0, nearest.latitude, 1e-9)
+        assertEquals(14.1, nearest.longitude, 1e-9)
+
+        val pastTheEnd = nearestPointOnRoute(route, Waypoint(44.3, 14.25))!!
+        assertEquals(Waypoint(44.2, 14.2), pastTheEnd)
+        assertEquals(null, nearestPointOnRoute(emptyList(), Waypoint(44.0, 14.0)))
+    }
 }

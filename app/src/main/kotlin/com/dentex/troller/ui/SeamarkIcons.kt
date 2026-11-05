@@ -6,6 +6,7 @@ import android.graphics.Canvas
 import android.graphics.DashPathEffect
 import android.graphics.Paint
 import android.graphics.Path
+import android.graphics.RectF
 import android.graphics.Typeface
 import com.dentex.troller.chart.ChartStyle
 
@@ -162,11 +163,17 @@ fun pinIcon(context: Context, color: String): Bitmap {
     val r = s * 0.42f
     val cx = s / 2
     val cy = r + s * 0.06f
+    val stroke = s * 0.07f
+    // One outline: the tip, a tangent line up to the head, the arc over the top, and the other
+    // tangent back down. A circle plus a separate triangle would also stroke the triangle's top
+    // edge as a white line across the head.
+    val tipY = h - stroke
+    val half = Math.toDegrees(kotlin.math.acos((r / (tipY - cy)).toDouble())).toFloat()
     val body = Path().apply {
-        addCircle(cx, cy, r, Path.Direction.CW)
-        moveTo(cx - r * 0.72f, cy + r * 0.7f)
-        lineTo(cx, h - 1f)
-        lineTo(cx + r * 0.72f, cy + r * 0.7f)
+        moveTo(cx, tipY)
+        val right = Math.toRadians((90f - half).toDouble())
+        lineTo(cx + r * kotlin.math.cos(right).toFloat(), cy + r * kotlin.math.sin(right).toFloat())
+        arcTo(RectF(cx - r, cy - r, cx + r, cy + r), 90f - half, -(360f - 2 * half))
         close()
     }
     canvas.drawPath(body, Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -176,7 +183,7 @@ fun pinIcon(context: Context, color: String): Bitmap {
     canvas.drawPath(body, Paint(Paint.ANTI_ALIAS_FLAG).apply {
         this.color = android.graphics.Color.WHITE
         style = Paint.Style.STROKE
-        strokeWidth = s * 0.07f
+        strokeWidth = stroke
         strokeJoin = Paint.Join.ROUND
     })
     canvas.drawCircle(cx, cy, r * 0.38f, Paint(Paint.ANTI_ALIAS_FLAG).apply { this.color = android.graphics.Color.WHITE })

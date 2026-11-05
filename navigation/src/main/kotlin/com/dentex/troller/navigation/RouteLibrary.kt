@@ -120,3 +120,38 @@ fun distanceMeters(a: Waypoint, b: Waypoint): Double {
         cos(lat1) * cos(lat2) * sin(Math.toRadians(b.longitude - a.longitude) / 2).pow(2)
     return 2 * EARTH_RADIUS_METERS * asin(sqrt(h))
 }
+
+/**
+ * The point of the route line closest to [from], or null for a route without waypoints.
+ *
+ * Works on a flat projection around [from], which is exact enough at the scale of a trolling route.
+ */
+fun nearestPointOnRoute(route: List<Waypoint>, from: Waypoint): Waypoint? {
+    if (route.isEmpty()) return null
+    if (route.size == 1) return route.first()
+    val scale = cos(Math.toRadians(from.latitude))
+    fun x(p: Waypoint) = (p.longitude - from.longitude) * scale
+    fun y(p: Waypoint) = p.latitude - from.latitude
+    var best = route.first()
+    var bestSquared = Double.MAX_VALUE
+    route.zipWithNext { a, b ->
+        val ax = x(a)
+        val ay = y(a)
+        val dx = x(b) - ax
+        val dy = y(b) - ay
+        val lengthSquared = dx * dx + dy * dy
+        // The fraction along a→b of the foot of the perpendicular from the origin, kept on the segment.
+        val t = if (lengthSquared == 0.0) 0.0 else (-(ax * dx + ay * dy) / lengthSquared).coerceIn(0.0, 1.0)
+        val px = ax + t * dx
+        val py = ay + t * dy
+        val squared = px * px + py * py
+        if (squared < bestSquared) {
+            bestSquared = squared
+            best = Waypoint(
+                latitude = a.latitude + t * (b.latitude - a.latitude),
+                longitude = a.longitude + t * (b.longitude - a.longitude),
+            )
+        }
+    }
+    return best
+}

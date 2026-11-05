@@ -60,10 +60,10 @@ object ChartGeoJson {
         return """{"type":"FeatureCollection","features":[${features.joinToString(",")}]}"""
     }
 
-    /** The pins, each with its id for a tap and its name for the label. */
-    fun pins(pins: List<Pin>): String {
+    /** The pins, each with its id for a tap and its name for the label. [selectedId] is drawn larger. */
+    fun pins(pins: List<Pin>, selectedId: String? = null): String {
         val features = pins.map { pin ->
-            """{"type":"Feature","properties":{"id":${quote(pin.id)},"name":${quote(pin.name)}},""" +
+            """{"type":"Feature","properties":{"id":${quote(pin.id)},"name":${quote(pin.name)},"selected":${pin.id == selectedId}},""" +
                 """"geometry":${point(pin.latitude, pin.longitude)}}"""
         }
         return """{"type":"FeatureCollection","features":[${features.joinToString(",")}]}"""
@@ -86,6 +86,13 @@ object ChartGeoJson {
             add("""{"type":"Feature","properties":$properties,"geometry":${point(target.latitude, target.longitude)}}""")
         }
         return """{"type":"FeatureCollection","features":[${features.joinToString(",")}]}"""
+    }
+
+    /** A ring at the spot whose info is shown, or nothing. */
+    fun mark(at: Waypoint?): String {
+        if (at == null) return EMPTY
+        return """{"type":"FeatureCollection","features":[{"type":"Feature","properties":{},""" +
+            """"geometry":${point(at.latitude, at.longitude)}}]}"""
     }
 
     private fun quote(text: String): String = buildString {

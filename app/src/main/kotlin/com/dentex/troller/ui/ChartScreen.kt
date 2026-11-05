@@ -109,6 +109,7 @@ import org.maplibre.geojson.Point
 import kotlinx.coroutines.delay
 import java.text.DateFormat
 import java.util.Date
+import java.util.Locale
 import kotlin.math.hypot
 
 /**
@@ -249,7 +250,8 @@ private fun ChartView(
     var map by remember { mutableStateOf<MapLibreMap?>(null) }
     var style by remember { mutableStateOf<Style?>(null) }
     var follow by rememberSaveable { mutableStateOf(true) }
-    var tapped by remember { mutableStateOf<Tapped?>(null) }
+    var tapped by remember { mutableStateOf<MapInfo?>(null) }
+    val currentRoutes by rememberUpdatedState(routes)
     val currentPins by rememberUpdatedState(pins)
     var confirmDeletePin by remember { mutableStateOf<Pin?>(null) }
 
@@ -378,8 +380,16 @@ private fun ChartView(
                 val pinId = m.queryRenderedFeatures(pinBox, ChartStyle.LAYER_PIN).firstOrNull()?.getStringProperty("id")
                 val pin = currentPins.library.pins.firstOrNull { it.id == pinId }
                 if (pin != null) {
-                    val date = pin.timeMillis?.let { "\n" + DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(Date(it)) } ?: ""
-                    tapped = Tapped("Pin · ${pin.name}$date\n${ChartStyle.formatPosition(pin.latitude, pin.longitude)}", pin)
+                    val at = Waypoint(pin.latitude, pin.longitude)
+                    val date = pin.timeMillis?.let { DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(Date(it)) }
+                    tapped = MapInfo("Pin: ${pin.name}", listOfNotNull(date, positionLine(at)), at = at, marked = true, pin = pin)
+                    return@addOnMapClickListener true
+                }
+                // Outside route mode only the selected route is drawn.
+                val onRoute = m.queryRenderedFeatures(box, ChartStyle.LAYER_ROUTE_POINTS, ChartStyle.LAYER_ROUTE_LINE).isNotEmpty()
+                val route = currentRoutes.selected
+                if (onRoute && route != null) {
+                    tapped = MapInfo("Route: ${route.name}", routeDetails(route), routeId = route.id)
                     return@addOnMapClickListener true
                 }
                 val mark = m.queryRenderedFeatures(box, ChartStyle.LAYER_SEAMARK_ICON, ChartStyle.LAYER_SEAMARK_DOT).firstOrNull()
@@ -391,7 +401,9 @@ private fun ChartView(
                         light = mark.getStringProperty("light"),
                         colour = mark.getStringProperty("colour"),
                     )
-                    tapped = Tapped("$text\n${ChartStyle.formatPosition(at.latitude, at.longitude)}")
+                    val spot = Waypoint(at.latitude, at.longitude)
+                    val lines = text.split("\n")
+                    tapped = MapInfo(lines.first(), lines.drop(1) + positionLine(spot), at = spot, marked = true)
                     return@addOnMapClickListener true
                 }
                 val onLand = m.queryRenderedFeatures(screen, ChartStyle.LAYER_LAND).isNotEmpty()
@@ -402,7 +414,8 @@ private fun ChartView(
                     depth != null -> "Depth ${ChartStyle.bandLabel(depth)}"
                     else -> "No depth data here"
                 }
-                tapped = Tapped("$what\n${ChartStyle.formatPosition(point.latitude, point.longitude)}")
+                val spot = Waypoint(point.latitude, point.longitude)
+                tapped = MapInfo(what, listOf(positionLine(spot)), at = spot, marked = true)
                 true
             }
             m.addOnMapLongClickListener { point ->
@@ -487,13 +500,25 @@ private fun ChartView(
         val others = if (routeMode) routes.routes.filter { it.id != routes.selectedId } else emptyList()
         style?.getSourceAs<GeoJsonSource>(ChartStyle.SOURCE_OTHER_ROUTES)?.setGeoJson(ChartGeoJson.otherRoutes(others))
     }
-    LaunchedEffect(style, pins.library, pins.show) {
+    // The pin and the route whose info is shown are drawn highlighted.
+    val selectedPinId = tapped?.pin?.id?.takeIf { !routeMode }
+    LaunchedEffect(style, pins.library, pins.show, selectedPinId) {
         style?.getSourceAs<GeoJsonSource>(ChartStyle.SOURCE_PINS)
-            ?.setGeoJson(ChartGeoJson.pins(if (pins.show) pins.library.pins else emptyList()))
+            ?.setGeoJson(ChartGeoJson.pins(if (pins.show) pins.library.pins else emptyList(), selectedPinId))
+    }
+    val highlightedRoute = tapped?.routeId?.takeIf { !routeMode }?.let { id -> routes.routes.firstOrNull { it.id == id } }
+    LaunchedEffect(style, highlightedRoute) {
+        style?.getSourceAs<GeoJsonSource>(ChartStyle.SOURCE_ROUTE_HIGHLIGHT)
+            ?.setGeoJson(ChartGeoJson.routeLine(highlightedRoute?.waypoints ?: emptyList()))
     }
     LaunchedEffect(style, goToTarget, position, goTo.state.active) {
         style?.getSourceAs<GeoJsonSource>(ChartStyle.SOURCE_GO_TO)
             ?.setGeoJson(ChartGeoJson.goTo(goToTarget, position, goTo.state.active))
+    }
+    // The spot whose depth or seamark is shown gets a ring, so it is clear what the info is for.
+    val markedSpot = tapped?.takeIf { it.marked && !routeMode }?.at
+    LaunchedEffect(style, markedSpot) {
+        style?.getSourceAs<GeoJsonSource>(ChartStyle.SOURCE_INFO_MARK)?.setGeoJson(ChartGeoJson.mark(markedSpot))
     }
     LaunchedEffect(map, follow, latitude, longitude) {
         val m = map ?: return@LaunchedEffect
@@ -554,8 +579,9 @@ private fun ChartView(
             }
         }
 
+        Column(modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth()) {
         Column(
-            modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(8.dp),
+            modifier = Modifier.fillMaxWidth().padding(8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             if (hasPosition && !follow) {
@@ -579,26 +605,21 @@ private fun ChartView(
                     actions = routeActions,
                     onDeselectWaypoint = { selectedWaypoint = null },
                 )
-            } else {
-                Surface(
-                    modifier = Modifier.widthIn(max = 260.dp),
-                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
-                    shape = MaterialTheme.shapes.small,
-                    tonalElevation = 2.dp,
-                ) {
-                    Column(modifier = Modifier.padding(start = 10.dp, end = 10.dp, top = 6.dp, bottom = if (tapped?.pin != null) 0.dp else 6.dp)) {
-                        Text(
-                            text = tapped?.text ?: "Tap for the depth, a seamark or a pin. Press and hold to move the boat there.",
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                        tapped?.pin?.let { pin ->
-                            TextButton(onClick = { confirmDeletePin = pin }) {
-                                Text("Delete pin", color = MaterialTheme.colorScheme.error)
-                            }
-                        }
-                    }
-                }
             }
+        }
+        // The info sheet runs along the bottom edge, outside the padding of the panels above.
+        if (!routeMode && goToTarget == null) {
+            // A route that was deleted takes its info with it; then the boat's own info shows.
+            val infoRoute = tapped?.routeId?.let { id -> routes.routes.firstOrNull { it.id == id } }
+            val info = tapped?.takeIf { it.routeId == null || infoRoute != null } ?: boatInfo(position, telemetry)
+            InfoSheet(
+                info = info,
+                route = infoRoute,
+                boat = position,
+                onReset = { tapped = null },
+                onDeletePin = { confirmDeletePin = it },
+            )
+        }
         }
     }
 
@@ -635,8 +656,6 @@ private fun ChartView(
     }
 }
 
-/** What the last tap on the chart found; [pin] when it was a pin. */
-private data class Tapped(val text: String, val pin: Pin? = null)
 
 private fun hasLocationPermission(context: Context): Boolean =
     ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) ==
@@ -958,3 +977,18 @@ private const val DRAG_REACH_DP = 28f
 
 /** What the corner badge of the chart offers, following the state of the link to the motor. */
 private enum class LinkBadge { STOP, RECONNECTING, NO_CONNECTION }
+
+/** What the sheet shows while nothing on the chart was tapped: the boat itself. */
+private fun boatInfo(position: BoatPosition?, telemetry: MotorTelemetry): MapInfo {
+    val hint = "Tap the chart for the depth, a seamark, a pin or the route. Press and hold to move the boat there."
+    if (position == null) return MapInfo("No boat position", listOf(hint))
+    val source = if (position.source == PositionSource.PHONE) "phone GPS" else "motor GPS"
+    val title = if (position.stale) "Boat · $source · no recent fix" else "Boat · $source"
+    val details = listOfNotNull(
+        positionLine(Waypoint(position.latitude, position.longitude)),
+        position.headingDegrees?.let { String.format(Locale.US, "Heading %03d°", Math.round(it) % 360) },
+        telemetry.speedKmh?.takeIf { position.source == PositionSource.MOTOR }?.let { String.format(Locale.US, "Speed %.1f km/h", it) },
+        hint,
+    )
+    return MapInfo(title, details)
+}

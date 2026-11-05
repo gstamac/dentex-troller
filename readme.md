@@ -84,7 +84,7 @@ AGP 9 compiles the Kotlin sources of the Android modules with its built-in Kotli
 adb pair 192.168.88.101:33977
 ```
 ```bash
-adb connect 192.168.88.101:43277
+adb connect 192.168.88.101:42071
 ```
 
 ```bash
@@ -142,7 +142,7 @@ within range before it answers.
 2. **Dashboard** — shows the motor profile, the telemetry and the age of the last update. The
    profile is only reported after a heartbeat with a valid checksum was received.
 3. **Chart** — an offline depth chart of the Adriatic with the boat position and heading from the
-   motor telemetry. Tap the chart for the depth or a seamark. The **route** button under the layers button switches route mode: tap the chart to add a waypoint, tap the line between two waypoints to insert one there, tap a waypoint to select it, then drag it to move it or delete it, and tap another route to select it; **Routes** lists every saved route to pick, rename or delete, and **New route** starts one. Routes are saved on the phone automatically. **Pins** in the layers menu shows or hides marked spots, and **Import GPX…** adds the waypoints of a GPX file as pins (for example the markers exported from the Navionics Boating app; ones already there are skipped) and its routes as saved routes. Tap a pin for its name, date and position, or to delete it. The
+   motor telemetry. Tap the chart for the depth, a seamark, a pin or the selected route: a pull-up panel shows its title, and pulled up (drag or tap the title) the details and the distance and bearing from the boat; for a route, to its start and its nearest point. A tapped depth or seamark is marked with a ring. The panel runs along the bottom edge and is always there: with nothing tapped it shows the boat (position source, position, heading, speed); dragging it down from its small state goes back to that. The **route** button under the layers button switches route mode: tap the chart to add a waypoint, tap the line between two waypoints to insert one there, tap a waypoint to select it, then drag it to move it or delete it, and tap another route to select it; **Routes** lists every saved route to pick, rename or delete, and **New route** starts one. Routes are saved on the phone automatically. **Pins** in the layers menu shows or hides marked spots, and **Import GPX…** adds the waypoints of a GPX file as pins (for example the markers exported from the Navionics Boating app; ones already there are skipped) and its routes as saved routes. The pin's panel can also delete it. The
    **layers** button under the STOP sign picks the chart layer: Default or Rainbow depths. The boat is green when
    the position comes from the motor and light blue when the motor has no recent fix and the
    phone's own GPS is used instead (**Use phone GPS** asks for the permission); it turns grey when

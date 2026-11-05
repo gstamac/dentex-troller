@@ -71,6 +71,8 @@ object ChartStyle {
     const val SOURCE_OTHER_ROUTES = "other-routes"
     const val SOURCE_PINS = "pins"
     const val SOURCE_GO_TO = "go-to"
+    const val SOURCE_INFO_MARK = "info-mark"
+    const val SOURCE_ROUTE_HIGHLIGHT = "route-highlight"
 
     const val LAYER_DEPTH_AREA = "depth-area"
     const val LAYER_RAINBOW = "depth-rainbow"
@@ -79,6 +81,7 @@ object ChartStyle {
     const val LAYER_LAND = "land"
     const val LAYER_BOAT_ARROW = "boat-arrow"
     const val LAYER_ROUTE_POINTS = "route-points"
+    const val LAYER_ROUTE_LINE = "route-line"
     const val LAYER_OTHER_ROUTE_LINE = "other-route-line"
     const val LAYER_OTHER_ROUTE_POINT = "other-route-point"
     const val LAYER_PIN = "pin"
@@ -188,6 +191,8 @@ object ChartStyle {
             "$SOURCE_BOAT": { "type": "geojson", "data": { "type": "FeatureCollection", "features": [] } },
             "$SOURCE_PINS": { "type": "geojson", "data": { "type": "FeatureCollection", "features": [] } },
             "$SOURCE_GO_TO": { "type": "geojson", "data": { "type": "FeatureCollection", "features": [] } },
+            "$SOURCE_INFO_MARK": { "type": "geojson", "data": { "type": "FeatureCollection", "features": [] } },
+            "$SOURCE_ROUTE_HIGHLIGHT": { "type": "geojson", "data": { "type": "FeatureCollection", "features": [] } },
             "$SOURCE_OTHER_ROUTES": { "type": "geojson", "data": { "type": "FeatureCollection", "features": [] } },
             "$SOURCE_ROUTE_LINE": { "type": "geojson", "data": { "type": "FeatureCollection", "features": [] } },
             "$SOURCE_ROUTE_POINTS": { "type": "geojson", "data": { "type": "FeatureCollection", "features": [] } }
@@ -236,9 +241,8 @@ object ChartStyle {
               "paint": { "text-color": "$LIGHT_LABEL", "text-halo-color": "${p.labelHalo}", "text-halo-width": 1.5 } },
             { "id": "$LAYER_PIN", "type": "symbol", "source": "$SOURCE_PINS",
               "layout": { "icon-image": "$IMAGE_PIN", "icon-anchor": "bottom", "icon-allow-overlap": true,
-                "text-field": ["step", ["zoom"], "", 12, ["get", "name"]], "text-font": ["$FONT"], "text-size": 11,
-                "text-anchor": "left", "text-offset": [0.7, -1.2], "text-optional": true },
-              "paint": { "text-color": "${p.pin}", "text-halo-color": "${p.labelHalo}", "text-halo-width": 1.5 } },
+                "icon-size": ["case", ["get", "selected"], 1.5, 1.0],
+                "symbol-sort-key": ["case", ["get", "selected"], 1, 0] } },
             { "id": "$LAYER_OTHER_ROUTE_LINE", "type": "line", "source": "$SOURCE_OTHER_ROUTES",
               "filter": ["==", ["geometry-type"], "LineString"],
               "layout": { "line-join": "round", "line-cap": "round" },
@@ -250,7 +254,10 @@ object ChartStyle {
               "filter": ["==", ["geometry-type"], "LineString"],
               "layout": { "symbol-placement": "line", "text-field": ["get", "name"], "text-font": ["$FONT"], "text-size": 11 },
               "paint": { "text-color": "${p.otherRoute}", "text-halo-color": "${p.labelHalo}", "text-halo-width": 1.5 } },
-            { "id": "route-line", "type": "line", "source": "$SOURCE_ROUTE_LINE",
+            { "id": "route-highlight", "type": "line", "source": "$SOURCE_ROUTE_HIGHLIGHT",
+              "layout": { "line-join": "round", "line-cap": "round" },
+              "paint": { "line-color": "${p.routeSelected}", "line-width": 10, "line-opacity": 0.55 } },
+            { "id": "$LAYER_ROUTE_LINE", "type": "line", "source": "$SOURCE_ROUTE_LINE",
               "layout": { "line-join": "round", "line-cap": "round" },
               "paint": { "line-color": "${p.route}", "line-width": 2.5, "line-dasharray": [2, 1.5] } },
             { "id": "$LAYER_ROUTE_POINTS", "type": "circle", "source": "$SOURCE_ROUTE_POINTS",
@@ -261,6 +268,14 @@ object ChartStyle {
               "layout": { "text-field": ["to-string", ["get", "number"]], "text-font": ["$FONT"], "text-size": 11,
                 "text-allow-overlap": true, "text-ignore-placement": true },
               "paint": { "text-color": "#ffffff" } },
+            { "id": "info-mark-halo", "type": "circle", "source": "$SOURCE_INFO_MARK",
+              "paint": { "circle-radius": 10, "circle-color": "rgba(0,0,0,0)",
+                "circle-stroke-color": "${p.labelHalo}", "circle-stroke-width": 5 } },
+            { "id": "info-mark", "type": "circle", "source": "$SOURCE_INFO_MARK",
+              "paint": { "circle-radius": 10, "circle-color": "rgba(0,0,0,0)",
+                "circle-stroke-color": "${p.label}", "circle-stroke-width": 2.5 } },
+            { "id": "info-mark-centre", "type": "circle", "source": "$SOURCE_INFO_MARK",
+              "paint": { "circle-radius": 2.5, "circle-color": "${p.label}" } },
             { "id": "go-to-line", "type": "line", "source": "$SOURCE_GO_TO",
               "filter": ["==", ["geometry-type"], "LineString"],
               "layout": { "line-cap": "round" },

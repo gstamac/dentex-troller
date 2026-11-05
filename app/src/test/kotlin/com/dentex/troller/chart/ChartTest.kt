@@ -48,6 +48,41 @@ class PmtilesHeaderTest {
 
 class ChartStyleTest {
 
+    /** A style that is not strict JSON (a comment, a trailing comma) leaves the whole chart blank. */
+    @Test
+    fun bothStylesAreStrictJson() {
+        for (night in listOf(false, true)) {
+            for (rainbow in listOf(null, "/rainbow.pmtiles")) {
+                val reader = com.google.gson.stream.JsonReader(java.io.StringReader(ChartStyle.json("/chart.pmtiles", night, rainbow)))
+                reader.isLenient = false
+                com.google.gson.internal.Streams.parse(reader)
+                assertEquals(com.google.gson.stream.JsonToken.END_DOCUMENT, reader.peek())
+            }
+        }
+        // The check itself catches a comment.
+        val withComment = com.google.gson.stream.JsonReader(java.io.StringReader("{ // no\n \"a\": 1 }"))
+        withComment.isLenient = false
+        val refused = runCatching { com.google.gson.internal.Streams.parse(withComment) }.isFailure
+        assertTrue(refused)
+    }
+
+    /**
+     * MapLibre drops a layer whose zoom expression is not the input of the outermost step or
+     * interpolate, without an error on screen. That once hid every pin.
+     */
+    @Test
+    fun zoomIsOnlyUsedAsTheInputOfATopLevelStepOrInterpolate() {
+        val json = ChartStyle.json("/chart.pmtiles", night = false, rainbowPath = "/rainbow.pmtiles")
+        Regex("""("[a-z-]+"): (\[[^\n]*?\["zoom"\])""").findAll(json).forEach { match ->
+            val expression = match.groupValues[2]
+            assertTrue(
+                "${match.groupValues[1]} uses zoom inside another expression: $expression",
+                expression.startsWith("[\"step\", [\"zoom\"]") ||
+                    expression.matches(Regex("""\["interpolate", \["[a-z]+"\], \["zoom"\]""")),
+            )
+        }
+    }
+
     @Test
     fun theStyleReadsTheLocalChartFile() {
         val json = ChartStyle.json("/storage/emulated/0/Android/data/com.dentex.troller/files/charts/adriatic.pmtiles", night = false)
@@ -140,6 +175,20 @@ class ChartGeoJsonTest {
         val withBoat = ChartGeoJson.goTo(target, BoatPosition(44.2, 14.8, null, PositionSource.MOTOR, stale = false), active = true)
         assertTrue(withBoat.contains("\"coordinates\":[[14.8000000,44.2000000],[14.9000000,44.3000000]]"))
         assertTrue(withBoat.contains("\"active\":true"))
+    }
+
+    @Test
+    fun onlyTheSelectedPinIsMarkedSelected() {
+        val pins = listOf(Pin("p1", "a", 44.0, 14.0, null), Pin("p2", "b", 44.1, 14.1, null))
+        val json = ChartGeoJson.pins(pins, selectedId = "p2")
+        assertTrue(json.contains("\"id\":\"p1\",\"name\":\"a\",\"selected\":false"))
+        assertTrue(json.contains("\"id\":\"p2\",\"name\":\"b\",\"selected\":true"))
+    }
+
+    @Test
+    fun theInfoMarkIsOnePointOrNothing() {
+        assertTrue(ChartGeoJson.mark(null).contains("\"features\":[]"))
+        assertTrue(ChartGeoJson.mark(Waypoint(44.3, 14.9)).contains("\"coordinates\":[14.9000000,44.3000000]"))
     }
 
     @Test

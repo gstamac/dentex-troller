@@ -153,13 +153,15 @@ internal fun ConfirmGoToDialog(target: Waypoint, boat: BoatPosition?, onConfirm:
 private fun targetLine(target: Waypoint, boat: BoatPosition?): String {
     val position = ChartStyle.formatPosition(target.latitude, target.longitude)
     if (boat == null) return "$position · boat position unknown"
-    val from = Waypoint(boat.latitude, boat.longitude)
-    val meters = distanceMeters(from, target)
-    val distance = if (meters < 185.2) {
-        String.format(Locale.US, "%.0f m", meters)
-    } else {
-        String.format(Locale.US, "%.2f NM", meters / 1852.0)
-    }
-    val bearing = Math.round(bearingDegrees(from, target)).toInt() % 360
-    return String.format(Locale.US, "%s\n%s · bearing %03d°", position, distance, bearing)
+    return "$position\n${distanceAndBearing(Waypoint(boat.latitude, boat.longitude), target)}"
 }
+
+/** "0.42 NM · bearing 093°" from [from] to [to]. */
+internal fun distanceAndBearing(from: Waypoint, to: Waypoint): String {
+    val bearing = Math.round(bearingDegrees(from, to)).toInt() % 360
+    return String.format(Locale.US, "%s · bearing %03d°", formatDistance(distanceMeters(from, to)), bearing)
+}
+
+/** Metres below a tenth of a nautical mile, nautical miles above. */
+internal fun formatDistance(meters: Double): String =
+    if (meters < 185.2) String.format(Locale.US, "%.0f m", meters) else String.format(Locale.US, "%.2f NM", meters / 1852.0)
