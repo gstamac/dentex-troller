@@ -128,6 +128,21 @@ class ChartStyleTest {
 class ChartGeoJsonTest {
 
     @Test
+    fun theGoToTargetHasALineFromTheBoatOnlyWhenTheBoatIsKnown() {
+        val target = Waypoint(44.3, 14.9)
+        assertTrue(ChartGeoJson.goTo(null, null, active = false).contains("\"features\":[]"))
+
+        val alone = ChartGeoJson.goTo(target, null, active = false)
+        assertTrue(alone.contains("\"type\":\"Point\",\"coordinates\":[14.9000000,44.3000000]"))
+        assertTrue(!alone.contains("LineString"))
+        assertTrue(alone.contains("\"active\":false"))
+
+        val withBoat = ChartGeoJson.goTo(target, BoatPosition(44.2, 14.8, null, PositionSource.MOTOR, stale = false), active = true)
+        assertTrue(withBoat.contains("\"coordinates\":[[14.8000000,44.2000000],[14.9000000,44.3000000]]"))
+        assertTrue(withBoat.contains("\"active\":true"))
+    }
+
+    @Test
     fun anUnknownPositionDrawsNoBoat() {
         assertTrue(ChartGeoJson.boat(null).contains("\"features\":[]"))
     }

@@ -19,11 +19,14 @@ import com.dentex.troller.haswing.MotorIdentity
 import com.dentex.troller.haswing.MotorMode
 import com.dentex.troller.haswing.MotorTelemetry
 import com.dentex.troller.haswing.MotorTransport
+import com.dentex.troller.haswing.ReportedMode
 import com.dentex.troller.logging.DiagnosticLog
 import com.dentex.troller.logging.LogEntry
 import com.dentex.troller.logging.Redaction
 import com.dentex.troller.mavlink.HelmsmanMavlinkCodec
 import com.dentex.troller.mavlink.MavlinkMessage
+import com.dentex.troller.navigation.GoToState
+import com.dentex.troller.navigation.GoToTarget
 import com.dentex.troller.navigation.MissionProgress
 import com.dentex.troller.navigation.MissionTransfer
 import com.dentex.troller.navigation.Route
@@ -102,6 +105,32 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _uiState = MutableStateFlow(MainUiState())
     val uiState: StateFlow<MainUiState> = _uiState.asStateFlow()
+
+    /**
+     * Moves the boat to a position picked on the chart: a one-waypoint route, then navigation
+     * mode once. Each step goes through the command gate of [motor].
+     */
+    private val goTo = GoToTarget(
+        scope = viewModelScope,
+        startUpload = { route -> mission.startUpload(route) },
+        uploadProgress = mission.progress,
+        cancelUpload = { mission.cancel() },
+        sendNavigation = { reportFailure(motor.requestMode(MotorMode.NAVIGATION)) },
+        sendManual = { reportFailure(motor.requestMode(MotorMode.MANUAL)) },
+        sendStop = { reportFailure(motor.requestStop()) },
+        sendAnchor = { reportFailure(motor.requestMode(MotorMode.ANCHOR)) },
+        sendSpeedUp = { reportFailure(motor.requestSpeedUp()) },
+        navigating = motor.telemetry
+            .map { telemetry -> telemetry.reportedMode?.let { it == ReportedMode.NAVIGATION } }
+            .stateIn(viewModelScope, SharingStarted.Eagerly, null),
+        motorSpeed = motor.telemetry
+            .map { it.motorSpeed }
+            .stateIn(viewModelScope, SharingStarted.Eagerly, null),
+        anchored = { motor.telemetry.value.reportedMode == ReportedMode.ANCHOR },
+    )
+
+    /** The go-to that is starting or running, or how the last one ended. */
+    val goToState: StateFlow<GoToState> = goTo.state
 
     /**
      * Retained log records for the diagnostics screen.
@@ -194,6 +223,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     }
                     is ConnectionState.Disconnected, is ConnectionState.Failed -> {
                         motor.onDisconnected()
+                        // Before the transfer is cancelled, so the go-to reports the lost link.
+                        goTo.onLinkLost()
                         // Stop a running transfer; keep the outcome of a finished one visible.
                         val phase = mission.progress.value.phase
                         if (phase == MissionProgress.Phase.UPLOADING ||
@@ -241,6 +272,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             motor.commandGate.collect { gate ->
                 _uiState.update { it.copy(commandGate = gate) }
+                if (gate == CommandGateState.LINK_LOST) goTo.onLinkLost()
             }
         }
         viewModelScope.launch {
@@ -448,8 +480,35 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         runCommand { motor.requestMode(mode) }
     }
 
+    /**
+     * Moves the boat to [target]: uploads it as the motor's route and switches the motor to
+     * navigation mode. The chart asks for a confirmation first.
+     */
+    fun goTo(target: Waypoint) {
+        goTo.start(target)?.let(::notifyUser)
+    }
+
+    /** Ends the go-to; sends manual mode when navigation mode was sent. */
+    fun cancelGoTo() {
+        goTo.cancel()
+    }
+
+    /** Switches the motor from navigation to anchor mode, holding the boat where it is. */
+    fun anchorGoTo() {
+        goTo.anchor()
+    }
+
+    /** Clears an ended or failed go-to from the chart. */
+    fun dismissGoTo() {
+        goTo.dismiss()
+    }
+
     /** Uploads a route to the motor. Uploading never starts propulsion. */
     fun uploadRoute(waypoints: List<Waypoint>) {
+        if (goTo.state.value.active) {
+            notifyUser("A go-to is running. Cancel it before uploading a route.")
+            return
+        }
         val route = Route(waypoints)
         if (!mission.startUpload(route)) {
             notifyUser("The route is empty")

@@ -84,7 +84,7 @@ AGP 9 compiles the Kotlin sources of the Android modules with its built-in Kotli
 adb pair 192.168.88.101:33977
 ```
 ```bash
-adb connect 192.168.88.101:40101
+adb connect 192.168.88.101:43277
 ```
 
 ```bash
@@ -146,8 +146,16 @@ within range before it answers.
    **layers** button under the STOP sign picks the chart layer: Default or Rainbow depths. The boat is green when
    the position comes from the motor and light blue when the motor has no recent fix and the
    phone's own GPS is used instead (**Use phone GPS** asks for the permission); it turns grey when
-   neither has a recent fix. The phone position is only displayed. The chart never sends
-   anything to the motor. It needs the chart file, see [Offline chart](#offline-chart).
+   neither has a recent fix. The phone position is only displayed. **Press and hold** the chart to pick a target: the panel shows its
+   distance and bearing from the boat, and **Move boat here** asks for a confirmation, uploads the target as a
+   one-waypoint route (replacing the route stored on the motor) and, a second after the motor acknowledges it,
+   switches the motor to navigation mode once, as Helmsman starts a route. The go-to only counts as under way
+   when the motor reports navigation mode; otherwise it fails and nothing is sent again. Navigation runs at the
+   speed the motor had last, so at speed 0 one speed step is sent. **Stop go-to** sends manual mode and then
+   STOP, because manual mode leaves the propeller running; the same stop is sent when the motor leaves navigation
+   by itself, unless it reports anchor mode. **Anchor here** switches from navigation to anchor mode once, so the
+   motor holds the boat where it is, without the stop. A lost link stops a go-to that has not started, and nothing is resent after a reconnect. Apart
+   from that and STOP, the chart sends nothing to the motor. It needs the chart file, see [Offline chart](#offline-chart).
 4. **Controls** — propulsion commands stay disabled until a type 110 motor was confirmed. The stop
    command is always available: a STOP button at the top of every screen, and a STOP sign on the chart. While the Bluetooth link is down the chart shows a "no connection" badge instead, which opens the connect screen. Switching to a mode asks for a confirmation.
 5. **Route** — uploads the selected route to the motor and downloads the one stored on it, which can be saved as a new route. Uploading a route never starts the motor.

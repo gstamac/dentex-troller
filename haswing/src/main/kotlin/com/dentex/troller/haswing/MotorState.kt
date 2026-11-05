@@ -54,6 +54,30 @@ data class MotorTelemetry(
 
     /** Quality of the motor's GPS, or `null` before the first `RAW_IMU`. */
     val gpsQuality: GpsQuality? get() = gpsSignal?.let(GpsQuality::fromSignal)
+
+    /** The mode the motor reports it is in, or `null` before the first `ATTITUDE`. */
+    val reportedMode: ReportedMode? get() = boatModel?.let(ReportedMode::fromCode)
+}
+
+/**
+ * The mode the motor reports in `ATTITUDE.pitchspeed`. The codes are the ones that
+ * `PMainFragment.boatModelState` of the Helmsman application tells apart; they differ from the
+ * command values of [MotorMode].
+ */
+enum class ReportedMode(val code: Int, val displayName: String) {
+    MANUAL(0, "Manual"),
+    ANCHOR(1, "Anchor"),
+    NAVIGATION(2, "Navigation"),
+    CRUISE(3, "Cruise"),
+    RECORD(4, "Recording a route"),
+    PEDAL(7, "Foot pedal"),
+    REMOTE(32, "Remote control"),
+    OTHER(-1, "Unknown"),
+    ;
+
+    companion object {
+        fun fromCode(code: Int): ReportedMode = entries.firstOrNull { it.code == code } ?: OTHER
+    }
 }
 
 /**

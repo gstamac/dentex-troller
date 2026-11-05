@@ -70,6 +70,7 @@ object ChartStyle {
     const val SOURCE_ROUTE_POINTS = "route-points"
     const val SOURCE_OTHER_ROUTES = "other-routes"
     const val SOURCE_PINS = "pins"
+    const val SOURCE_GO_TO = "go-to"
 
     const val LAYER_DEPTH_AREA = "depth-area"
     const val LAYER_RAINBOW = "depth-rainbow"
@@ -102,6 +103,7 @@ object ChartStyle {
         val routeSelected: String,
         val otherRoute: String,
         val pin: String,
+        val goTo: String,
         val boatMotor: String,
         val boatPhone: String,
         val boatStale: String,
@@ -119,6 +121,7 @@ object ChartStyle {
         routeSelected = "#f2b705",
         otherRoute = "#7b6a92",
         pin = "#d9480f",
+        goTo = "#c2187a",
         boatMotor = "#2e9e44",
         boatPhone = "#5bb8f0",
         boatStale = "#8a8a8a",
@@ -136,6 +139,7 @@ object ChartStyle {
         routeSelected = "#ffd34d",
         otherRoute = "#a99cc2",
         pin = "#ff8a3d",
+        goTo = "#ff6fb5",
         boatMotor = "#5fd17a",
         boatPhone = "#8dd0f7",
         boatStale = "#6b6b6b",
@@ -183,6 +187,7 @@ object ChartStyle {
             $rainbowSource
             "$SOURCE_BOAT": { "type": "geojson", "data": { "type": "FeatureCollection", "features": [] } },
             "$SOURCE_PINS": { "type": "geojson", "data": { "type": "FeatureCollection", "features": [] } },
+            "$SOURCE_GO_TO": { "type": "geojson", "data": { "type": "FeatureCollection", "features": [] } },
             "$SOURCE_OTHER_ROUTES": { "type": "geojson", "data": { "type": "FeatureCollection", "features": [] } },
             "$SOURCE_ROUTE_LINE": { "type": "geojson", "data": { "type": "FeatureCollection", "features": [] } },
             "$SOURCE_ROUTE_POINTS": { "type": "geojson", "data": { "type": "FeatureCollection", "features": [] } }
@@ -256,6 +261,19 @@ object ChartStyle {
               "layout": { "text-field": ["to-string", ["get", "number"]], "text-font": ["$FONT"], "text-size": 11,
                 "text-allow-overlap": true, "text-ignore-placement": true },
               "paint": { "text-color": "#ffffff" } },
+            { "id": "go-to-line", "type": "line", "source": "$SOURCE_GO_TO",
+              "filter": ["==", ["geometry-type"], "LineString"],
+              "layout": { "line-cap": "round" },
+              "paint": { "line-color": "${p.goTo}", "line-width": 2.5, "line-dasharray": [1, 1.5],
+                "line-opacity": ["case", ["get", "active"], 1.0, 0.5] } },
+            { "id": "go-to-target", "type": "circle", "source": "$SOURCE_GO_TO",
+              "filter": ["==", ["geometry-type"], "Point"],
+              "paint": { "circle-radius": 11, "circle-color": "rgba(0,0,0,0)",
+                "circle-stroke-color": "${p.goTo}", "circle-stroke-width": 3,
+                "circle-stroke-opacity": ["case", ["get", "active"], 1.0, 0.6] } },
+            { "id": "go-to-centre", "type": "circle", "source": "$SOURCE_GO_TO",
+              "filter": ["==", ["geometry-type"], "Point"],
+              "paint": { "circle-radius": 3.5, "circle-color": "${p.goTo}" } },
             { "id": "boat-dot", "type": "circle", "source": "$SOURCE_BOAT",
               "filter": ["!", ["has", "heading"]],
               "paint": { "circle-radius": 7, "circle-color": ["case", ["get", "stale"], "${p.boatStale}",

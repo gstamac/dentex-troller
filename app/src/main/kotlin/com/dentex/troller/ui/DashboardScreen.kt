@@ -68,6 +68,18 @@ fun DashboardScreen(viewModel: MainViewModel) {
                 modifier = Modifier.weight(1f),
             )
         }
+        TelemetryRow {
+            TelemetryCard(
+                label = "Mode",
+                value = telemetry.boatModel?.let { "${telemetry.reportedMode?.displayName} ($it)" } ?: "—",
+                modifier = Modifier.weight(1f),
+            )
+            TelemetryCard(
+                label = "Target waypoint",
+                value = telemetry.targetPoint?.toString() ?: "—",
+                modifier = Modifier.weight(1f),
+            )
+        }
 
         SectionHeader("Position")
         TelemetryRow {

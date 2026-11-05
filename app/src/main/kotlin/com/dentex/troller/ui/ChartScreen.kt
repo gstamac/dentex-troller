@@ -88,7 +88,10 @@ import com.dentex.troller.chart.ChartStyle
 import com.dentex.troller.chart.PhoneFix
 import com.dentex.troller.chart.PositionSource
 import com.dentex.troller.chart.RouteHit
+import com.dentex.troller.haswing.CommandGateState
 import com.dentex.troller.haswing.MotorTelemetry
+import com.dentex.troller.haswing.ReportedMode
+import com.dentex.troller.navigation.GoToState
 import com.dentex.troller.navigation.MissionProgress
 import com.dentex.troller.navigation.Pin
 import com.dentex.troller.navigation.PinLibrary
@@ -111,8 +114,8 @@ import kotlin.math.hypot
 /**
  * Offline depth chart with the boat position and the route being edited.
  *
- * The chart only displays data and edits the route draft. It never sends anything to the motor;
- * uploading the route stays an explicit action on the route screen.
+ * The chart displays data and edits routes. The only thing on it that talks to the motor, apart
+ * from STOP, is "Move boat here", which asks for a confirmation first.
  */
 @Composable
 fun ChartScreen(viewModel: MainViewModel, onOpenConnect: () -> Unit) {
@@ -123,6 +126,7 @@ fun ChartScreen(viewModel: MainViewModel, onOpenConnect: () -> Unit) {
     val routes by viewModel.routes.collectAsStateWithLifecycle()
     val pins by viewModel.pins.collectAsStateWithLifecycle()
     val showPins by viewModel.showPins.collectAsStateWithLifecycle()
+    val goToState by viewModel.goToState.collectAsStateWithLifecycle()
     val gpxImporter = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let(viewModel::importGpx)
     }
@@ -182,6 +186,19 @@ fun ChartScreen(viewModel: MainViewModel, onOpenConnect: () -> Unit) {
             onImport = { gpxImporter.launch(arrayOf("*/*")) },
             onDelete = viewModel::deletePin,
         ),
+        goTo = GoToActions(
+            state = goToState,
+            blockedBecause = when {
+                state.connectionState !is ConnectionState.Ready -> "Connect to the remote to move the boat."
+                state.commandGate != CommandGateState.READY -> "Waiting for the motor to answer before it can move the boat."
+                state.telemetry.reportedMode == ReportedMode.NAVIGATION -> "The motor is already navigating."
+                else -> null
+            },
+            start = viewModel::goTo,
+            cancel = viewModel::cancelGoTo,
+            anchor = viewModel::anchorGoTo,
+            dismiss = viewModel::dismissGoTo,
+        ),
     )
 }
 
@@ -222,6 +239,7 @@ private fun ChartView(
     routes: RouteLibrary,
     pins: PinOverlay,
     routeActions: RouteActions,
+    goTo: GoToActions,
 ) {
     val context = LocalContext.current
     val night = isSystemInDarkTheme()
@@ -234,6 +252,15 @@ private fun ChartView(
     var tapped by remember { mutableStateOf<Tapped?>(null) }
     val currentPins by rememberUpdatedState(pins)
     var confirmDeletePin by remember { mutableStateOf<Pin?>(null) }
+
+    // A long press picks a target; "Move boat here" confirms it and starts the go-to.
+    var pickedTarget by remember { mutableStateOf<Waypoint?>(null) }
+    var confirmGoTo by remember { mutableStateOf(false) }
+    val currentGoTo by rememberUpdatedState(goTo)
+    LaunchedEffect(goTo.state.phase) {
+        if (goTo.state.phase != GoToState.Phase.IDLE) pickedTarget = null
+    }
+    val goToTarget = if (goTo.state.phase == GoToState.Phase.IDLE) pickedTarget else goTo.state.target
 
     // Route mode: taps edit routes instead of showing the depth.
     var routeMode by rememberSaveable { mutableStateOf(false) }
@@ -341,6 +368,11 @@ private fun ChartView(
                     }
                     return@addOnMapClickListener true
                 }
+                // A tap anywhere drops a target that was picked but not started.
+                if (pickedTarget != null && currentGoTo.state.phase == GoToState.Phase.IDLE) {
+                    pickedTarget = null
+                    return@addOnMapClickListener true
+                }
                 // The pin's tip is the spot and the icon rises above it, so the box reaches higher.
                 val pinBox = RectF(screen.x - reach, screen.y - reach, screen.x + reach, screen.y + 2.5f * reach)
                 val pinId = m.queryRenderedFeatures(pinBox, ChartStyle.LAYER_PIN).firstOrNull()?.getStringProperty("id")
@@ -371,6 +403,14 @@ private fun ChartView(
                     else -> "No depth data here"
                 }
                 tapped = Tapped("$what\n${ChartStyle.formatPosition(point.latitude, point.longitude)}")
+                true
+            }
+            m.addOnMapLongClickListener { point ->
+                // Route mode keeps its own gestures, and a running go-to has to be cancelled first.
+                if (currentRouteMode || currentGoTo.state.active) return@addOnMapLongClickListener false
+                if (currentGoTo.state.phase != GoToState.Phase.IDLE) currentGoTo.dismiss()
+                pickedTarget = Waypoint(point.latitude, point.longitude)
+                tapped = null
                 true
             }
             // In route mode, a press that starts on the selected waypoint drags it instead of
@@ -451,6 +491,10 @@ private fun ChartView(
         style?.getSourceAs<GeoJsonSource>(ChartStyle.SOURCE_PINS)
             ?.setGeoJson(ChartGeoJson.pins(if (pins.show) pins.library.pins else emptyList()))
     }
+    LaunchedEffect(style, goToTarget, position, goTo.state.active) {
+        style?.getSourceAs<GeoJsonSource>(ChartStyle.SOURCE_GO_TO)
+            ?.setGeoJson(ChartGeoJson.goTo(goToTarget, position, goTo.state.active))
+    }
     LaunchedEffect(map, follow, latitude, longitude) {
         val m = map ?: return@LaunchedEffect
         if (!follow || latitude == null || longitude == null) return@LaunchedEffect
@@ -520,7 +564,15 @@ private fun ChartView(
                     modifier = Modifier.align(Alignment.End),
                 )
             }
-            if (routeMode) {
+            if (!routeMode && goToTarget != null) {
+                GoToPanel(
+                    actions = goTo,
+                    picked = pickedTarget,
+                    boat = position,
+                    telemetry = telemetry,
+                    onMoveHere = { confirmGoTo = true },
+                )
+            } else if (routeMode) {
                 RoutePanel(
                     routes = routes,
                     selectedWaypoint = shownWaypoint,
@@ -536,7 +588,7 @@ private fun ChartView(
                 ) {
                     Column(modifier = Modifier.padding(start = 10.dp, end = 10.dp, top = 6.dp, bottom = if (tapped?.pin != null) 0.dp else 6.dp)) {
                         Text(
-                            text = tapped?.text ?: "Tap for the depth, a seamark or a pin.",
+                            text = tapped?.text ?: "Tap for the depth, a seamark or a pin. Press and hold to move the boat there.",
                             style = MaterialTheme.typography.bodySmall,
                         )
                         tapped?.pin?.let { pin ->
@@ -548,6 +600,20 @@ private fun ChartView(
                 }
             }
         }
+    }
+
+    val target = pickedTarget
+    if (confirmGoTo && target != null) {
+        ConfirmGoToDialog(
+            target = target,
+            boat = position,
+            onConfirm = {
+                confirmGoTo = false
+                // Checked again: the link may have dropped while the dialog was open.
+                if (goTo.blockedBecause == null) goTo.start(target)
+            },
+            onDismiss = { confirmGoTo = false },
+        )
     }
 
     confirmDeletePin?.let { pin ->
