@@ -146,9 +146,12 @@ fi
 
 if [[ "$TARGET" != chart ]]; then
 echo "== rainbow depths"
-# EMODnet's "rainbowcolour" style of the emodnet:mean WMS layer, with land left transparent like
-# the "no land" variant. Colours are interpolated linearly between the stops, as in the WMS.
-# The legend in the app (ChartStyle.RAINBOW) uses the same stops.
+# EMODnet's "rainbowcolour" style of the emodnet:mean WMS layer. Colours are interpolated linearly
+# between the stops, as in the WMS. The legend in the app (ChartStyle.RAINBOW) uses the same stops.
+# Land keeps the shallowest red instead of turning transparent: a transparent edge would follow
+# the 76 m pixels and show as steps in front of the finer OSM shoreline. The app draws the land
+# on top, so the red only shows in the gap between the grid's coast and the real one. Identical
+# all-red inland tiles are stored once.
 cat > "$WORK/rainbow.txt" <<'COLORS'
 nv      0   0   0   0
 -6000 182   0 208 255
@@ -160,8 +163,7 @@ nv      0   0   0   0
 -40   229 235   2 255
 -5    255   8  30 255
 0     206   0  16 255
-0.01    0   0   0   0
-9000    0   0   0   0
+9000  206   0  16 255
 COLORS
 # Pixels sit exactly on the zoom 11 tile grid (156543.03392804097 / 2^11 m), so the tiles need no
 # second resampling. The grid is about 115 m, so zoom 11 keeps all of its detail.
