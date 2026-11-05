@@ -33,15 +33,11 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
-import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
-import androidx.compose.material3.Icon
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
@@ -63,6 +59,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -456,13 +454,8 @@ private fun ChartView(
     LaunchedEffect(map, follow, latitude, longitude) {
         val m = map ?: return@LaunchedEffect
         if (!follow || latitude == null || longitude == null) return@LaunchedEffect
-        val target = LatLng(latitude, longitude)
-        val update = if (m.cameraPosition.zoom < FOLLOW_ZOOM - 2) {
-            CameraUpdateFactory.newLatLngZoom(target, FOLLOW_ZOOM)
-        } else {
-            CameraUpdateFactory.newLatLng(target)
-        }
-        m.animateCamera(update, FOLLOW_ANIMATION_MILLIS)
+        // Only the centre moves: the zoom stays where the user left it.
+        m.animateCamera(CameraUpdateFactory.newLatLng(LatLng(latitude, longitude)), FOLLOW_ANIMATION_MILLIS)
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -522,10 +515,8 @@ private fun ChartView(
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             if (hasPosition && !follow) {
-                ExtendedFloatingActionButton(
+                FollowBoatButton(
                     onClick = { follow = true },
-                    icon = { Icon(Icons.Default.LocationOn, contentDescription = null) },
-                    text = { Text("Follow boat") },
                     modifier = Modifier.align(Alignment.End),
                 )
             }
@@ -858,6 +849,34 @@ private fun boatArrow(context: Context, color: String): Bitmap {
 private const val MIN_ZOOM = 5.0
 private const val MAX_ZOOM = 16.0
 private const val START_ZOOM = 6.5
+/** A round button with a target sign that centres the chart on the boat again and keeps it there. */
+@Composable
+private fun FollowBoatButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
+    Surface(
+        onClick = onClick,
+        shape = CircleShape,
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
+        shadowElevation = 2.dp,
+        modifier = modifier
+            .size(48.dp)
+            .semantics { contentDescription = "Follow the boat" },
+    ) {
+        val ink = MaterialTheme.colorScheme.onSurface
+        Canvas(modifier = Modifier.padding(11.dp)) {
+            val w = size.width
+            val c = center
+            val stroke = w * 0.09f
+            drawCircle(ink, radius = w * 0.32f, center = c, style = Stroke(width = stroke))
+            drawCircle(ink, radius = w * 0.12f, center = c)
+            val inner = w * 0.32f
+            val outer = w * 0.5f
+            listOf(Offset(1f, 0f), Offset(-1f, 0f), Offset(0f, 1f), Offset(0f, -1f)).forEach { d ->
+                drawLine(ink, c + d * inner, c + d * outer, strokeWidth = stroke, cap = StrokeCap.Round)
+            }
+        }
+    }
+}
+
 private const val FOLLOW_ZOOM = 13.0
 private const val START_LATITUDE = 43.6
 private const val START_LONGITUDE = 15.6
