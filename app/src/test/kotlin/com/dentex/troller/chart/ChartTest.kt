@@ -175,6 +175,10 @@ class ChartGeoJsonTest {
         val withBoat = ChartGeoJson.goTo(target, BoatPosition(44.2, 14.8, null, PositionSource.MOTOR, stale = false), active = true)
         assertTrue(withBoat.contains("\"coordinates\":[[14.8000000,44.2000000],[14.9000000,44.3000000]]"))
         assertTrue(withBoat.contains("\"active\":true"))
+
+        val lineOnly = ChartGeoJson.goTo(target, BoatPosition(44.2, 14.8, null, PositionSource.MOTOR, stale = false), active = false, ring = false)
+        assertTrue(lineOnly.contains("LineString"))
+        assertTrue(!lineOnly.contains("\"type\":\"Point\""))
     }
 
     @Test

@@ -257,7 +257,8 @@ private fun ChartView(
 
     // A long press picks a target; "Move boat here" confirms it and starts the go-to.
     var pickedTarget by remember { mutableStateOf<Waypoint?>(null) }
-    var confirmGoTo by remember { mutableStateOf(false) }
+    // The spot "Move boat here" asks about, from the go-to panel or the info sheet.
+    var confirmGoTo by remember { mutableStateOf<Waypoint?>(null) }
     val currentGoTo by rememberUpdatedState(goTo)
     LaunchedEffect(goTo.state.phase) {
         if (goTo.state.phase != GoToState.Phase.IDLE) pickedTarget = null
@@ -511,9 +512,17 @@ private fun ChartView(
         style?.getSourceAs<GeoJsonSource>(ChartStyle.SOURCE_ROUTE_HIGHLIGHT)
             ?.setGeoJson(ChartGeoJson.routeLine(highlightedRoute?.waypoints ?: emptyList()))
     }
-    LaunchedEffect(style, goToTarget, position, goTo.state.active) {
-        style?.getSourceAs<GeoJsonSource>(ChartStyle.SOURCE_GO_TO)
-            ?.setGeoJson(ChartGeoJson.goTo(goToTarget, position, goTo.state.active))
+    // While the boat can be moved, a tapped spot gets the same dashed line from the boat as a
+    // long-pressed target. It has its own ring already, so the go-to ring is left out.
+    val canMove = goTo.blockedBecause == null
+    val infoSpot = tapped?.at?.takeIf { canMove && !routeMode && goToTarget == null }
+    LaunchedEffect(style, goToTarget, infoSpot, position, goTo.state.active) {
+        val json = if (goToTarget != null) {
+            ChartGeoJson.goTo(goToTarget, position, goTo.state.active)
+        } else {
+            ChartGeoJson.goTo(infoSpot, position, active = false, ring = false)
+        }
+        style?.getSourceAs<GeoJsonSource>(ChartStyle.SOURCE_GO_TO)?.setGeoJson(json)
     }
     // The spot whose depth or seamark is shown gets a ring, so it is clear what the info is for.
     val markedSpot = tapped?.takeIf { it.marked && !routeMode }?.at
@@ -596,7 +605,7 @@ private fun ChartView(
                     picked = pickedTarget,
                     boat = position,
                     telemetry = telemetry,
-                    onMoveHere = { confirmGoTo = true },
+                    onMoveHere = { confirmGoTo = pickedTarget },
                 )
             } else if (routeMode) {
                 RoutePanel(
@@ -618,22 +627,25 @@ private fun ChartView(
                 boat = position,
                 onReset = { tapped = null },
                 onDeletePin = { confirmDeletePin = it },
+                onMoveHere = if (canMove) { spot -> confirmGoTo = spot } else null,
             )
         }
         }
     }
 
-    val target = pickedTarget
-    if (confirmGoTo && target != null) {
+    confirmGoTo?.let { target ->
         ConfirmGoToDialog(
             target = target,
             boat = position,
             onConfirm = {
-                confirmGoTo = false
+                confirmGoTo = null
                 // Checked again: the link may have dropped while the dialog was open.
-                if (goTo.blockedBecause == null) goTo.start(target)
+                if (goTo.blockedBecause == null) {
+                    goTo.start(target)
+                    tapped = null
+                }
             },
-            onDismiss = { confirmGoTo = false },
+            onDismiss = { confirmGoTo = null },
         )
     }
 

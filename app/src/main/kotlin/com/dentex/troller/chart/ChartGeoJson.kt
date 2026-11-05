@@ -73,7 +73,7 @@ object ChartGeoJson {
      * The go-to target as a ring, and a line to it from the boat when the boat position is
      * known. [active] is true once the go-to started; a target that is only picked is drawn fainter.
      */
-    fun goTo(target: Waypoint?, boat: BoatPosition?, active: Boolean): String {
+    fun goTo(target: Waypoint?, boat: BoatPosition?, active: Boolean, ring: Boolean = true): String {
         if (target == null) return EMPTY
         val properties = """{"active":$active}"""
         val features = buildList {
@@ -83,7 +83,7 @@ object ChartGeoJson {
                         """[${coordinate(boat.latitude, boat.longitude)},${coordinate(target.latitude, target.longitude)}]}}""",
                 )
             }
-            add("""{"type":"Feature","properties":$properties,"geometry":${point(target.latitude, target.longitude)}}""")
+            if (ring) add("""{"type":"Feature","properties":$properties,"geometry":${point(target.latitude, target.longitude)}}""")
         }
         return """{"type":"FeatureCollection","features":[${features.joinToString(",")}]}"""
     }
