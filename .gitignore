@@ -11,3 +11,5 @@ local.properties
 
 # Copies of licensed Navionics chart cards; never commit them
 docs/navionics/
+# Decompiled third-party software; never commit it
+docs/scannav-decompile/
