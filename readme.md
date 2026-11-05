@@ -84,7 +84,7 @@ AGP 9 compiles the Kotlin sources of the Android modules with its built-in Kotli
 adb pair 192.168.88.101:33977
 ```
 ```bash
-adb connect 192.168.88.101:34387
+adb connect 192.168.88.101:42165
 ```
 
 ```bash
@@ -132,7 +132,7 @@ The BLE peer is the **remote control** of the motor, not the motor itself. The p
 remote over Bluetooth and the remote talks to the motor, so the remote has to be switched on and
 within range before it answers.
 
-1. **Connect** — grant the Bluetooth permissions, scan for the remote and connect to it. The app
+1. **Connect** — the app opens on the chart and, without a link, looks for the remote it was connected to last and connects to it. It does the same whenever the link is lost, scanning for 30 seconds at a time with a short pause in between, until the remote is back; the chart then shows a turning reconnect badge instead of the STOP sign. After a manual Disconnect it waits for you to connect again. Otherwise grant the Bluetooth permissions, scan for the remote and connect to it. The app
    opens the GATT service, subscribes to the notify characteristic and starts a MAVLink parser.
    The scan runs without a service filter, because the remote does not necessarily advertise the
    GATT service in its advertisement packet.
@@ -146,7 +146,7 @@ within range before it answers.
    neither has a recent fix. The phone position is only displayed. The chart never sends
    anything to the motor. It needs the chart file, see [Offline chart](#offline-chart).
 4. **Controls** — propulsion commands stay disabled until a type 110 motor was confirmed. The stop
-   command is always available: a STOP button at the top of every screen, and a STOP sign on the chart. Switching to a mode asks for a confirmation.
+   command is always available: a STOP button at the top of every screen, and a STOP sign on the chart. While the Bluetooth link is down the chart shows a "no connection" badge instead, which opens the connect screen. Switching to a mode asks for a confirmation.
 5. **Route** — uploads and downloads waypoints. Uploading a route never starts the motor.
 6. **Log** — shows the raw traffic in both directions and exports it as text so that it can be
    compared with a capture from the Helmsman application. Every device seen during a scan is

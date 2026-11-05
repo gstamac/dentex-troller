@@ -1,9 +1,6 @@
 package com.dentex.troller.ui
 
-import android.Manifest
 import android.content.Context
-import android.content.pm.PackageManager
-import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -38,7 +35,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.dentex.troller.MainViewModel
 import com.dentex.troller.ble.BleScanResult
@@ -61,36 +57,13 @@ fun ConnectScreen(viewModel: MainViewModel) {
     val context = LocalContext.current
     var serviceFilter by remember { mutableStateOf(false) }
 
-    val bluetoothPermissions = remember {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            arrayOf(Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_CONNECT)
-        } else {
-            arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
-        }
-    }
-
-    /**
-     * The location permission is not needed to derive a position, but some vendor builds refuse
-     * to hand out BLE scan results while it is missing, so it is requested as well.
-     */
-    val locationPermission = remember {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            Manifest.permission.ACCESS_FINE_LOCATION
-        } else {
-            null
-        }
-    }
-
+    val locationPermission = BluetoothPermissions.location
     var hasBluetoothPermission by remember { mutableStateOf(false) }
     var hasLocationPermission by remember { mutableStateOf(false) }
 
     fun refreshPermissionState() {
-        hasBluetoothPermission = bluetoothPermissions.all {
-            ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
-        }
-        hasLocationPermission = locationPermission == null ||
-            ContextCompat.checkSelfPermission(context, locationPermission) ==
-            PackageManager.PERMISSION_GRANTED
+        hasBluetoothPermission = BluetoothPermissions.hasBluetooth(context)
+        hasLocationPermission = BluetoothPermissions.hasLocation(context)
     }
 
     LaunchedEffect(Unit) { refreshPermissionState() }
@@ -125,9 +98,7 @@ fun ConnectScreen(viewModel: MainViewModel) {
                             permissionLauncher.launch(arrayOf(locationPermission))
                         }
                     } else {
-                        val toRequest = bluetoothPermissions.toMutableList()
-                        locationPermission?.let { toRequest.add(it) }
-                        permissionLauncher.launch(toRequest.toTypedArray())
+                        permissionLauncher.launch(BluetoothPermissions.all)
                     }
                 },
             ) {
@@ -172,8 +143,18 @@ fun ConnectScreen(viewModel: MainViewModel) {
                 modifier = Modifier.padding(vertical = 8.dp),
             ) {
                 CircularProgressIndicator(modifier = Modifier.padding(end = 8.dp))
-                Text("Scanning… ${state.devices.size} device(s) found")
+                Text(
+                    state.autoConnectTo?.let { "Looking for $it to reconnect… ${state.devices.size} device(s) found" }
+                        ?: "Scanning… ${state.devices.size} device(s) found",
+                )
             }
+        } else if (state.reconnecting) {
+            Text(
+                text = "Reconnecting to the last remote. The next scan starts in a few seconds.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 8.dp),
+            )
         } else if (state.devices.isEmpty()) {
             Text(
                 text = "No devices found yet. Make sure the remote is switched on and close to " +

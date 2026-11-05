@@ -58,6 +58,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.dentex.troller.MainViewModel
+import com.dentex.troller.ble.ConnectionState
 import com.dentex.troller.chart.BoatPosition
 import com.dentex.troller.chart.ChartGeoJson
 import com.dentex.troller.chart.ChartStore
@@ -85,7 +86,7 @@ import kotlinx.coroutines.delay
  * uploading the route stays an explicit action on the route screen.
  */
 @Composable
-fun ChartScreen(viewModel: MainViewModel) {
+fun ChartScreen(viewModel: MainViewModel, onOpenConnect: () -> Unit) {
     val chart by viewModel.chartFile.collectAsStateWithLifecycle()
     val rainbowFile by viewModel.rainbowFile.collectAsStateWithLifecycle()
     val showRainbow by viewModel.showRainbow.collectAsStateWithLifecycle()
@@ -112,6 +113,15 @@ fun ChartScreen(viewModel: MainViewModel) {
         rainbowInstalled = rainbowFile != null,
         onRainbowClick = { if (rainbowFile == null) import() else viewModel.setShowRainbow(!showRainbow) },
         onStop = viewModel::requestStop,
+        link = when {
+            // The transport only accepts writes once the link is ready, so STOP is offered only then.
+            state.connectionState is ConnectionState.Ready -> LinkBadge.STOP
+            state.reconnecting ||
+                state.connectionState is ConnectionState.Connecting ||
+                state.connectionState is ConnectionState.Connected -> LinkBadge.RECONNECTING
+            else -> LinkBadge.NO_CONNECTION
+        },
+        onOpenConnect = onOpenConnect,
         telemetry = state.telemetry,
         route = route,
         onLongPress = { if (editable) viewModel.addWaypoint(it) },
@@ -125,6 +135,8 @@ private fun ChartView(
     rainbowInstalled: Boolean,
     onRainbowClick: () -> Unit,
     onStop: () -> Unit,
+    link: LinkBadge,
+    onOpenConnect: () -> Unit,
     telemetry: MotorTelemetry,
     route: List<Waypoint>,
     onLongPress: (Waypoint) -> Unit,
@@ -143,6 +155,15 @@ private fun ChartView(
     var locationAllowed by remember { mutableStateOf(hasLocationPermission(context)) }
     val locationRequest = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
         locationAllowed = hasLocationPermission(context)
+    }
+    // The app may ask for location at startup, alongside the Bluetooth permissions.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) locationAllowed = hasLocationPermission(context)
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
     val phoneLocation = phoneLocation(context, locationAllowed)
     // Ticks once a second so a fix that stops updating turns stale on screen.
@@ -284,7 +305,11 @@ private fun ChartView(
             horizontalAlignment = Alignment.End,
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            StopSignButton(onStop = onStop)
+            when (link) {
+                LinkBadge.STOP -> StopSignButton(onStop = onStop)
+                LinkBadge.RECONNECTING -> ReconnectingButton(onClick = onOpenConnect)
+                LinkBadge.NO_CONNECTION -> NoConnectionButton(onClick = onOpenConnect)
+            }
             FilterChip(
                 selected = rainbow != null,
                 onClick = onRainbowClick,
@@ -505,3 +530,6 @@ private const val MIN_COURSE_SPEED_MPS = 0.5f
 private const val BOAT_ICON_DP = 30f
 private const val LEGEND_MAX_DEPTH = 500
 private const val SEAMARK_TAP_DP = 16f
+
+/** What the corner badge of the chart offers, following the state of the link to the motor. */
+private enum class LinkBadge { STOP, RECONNECTING, NO_CONNECTION }

@@ -1,5 +1,7 @@
 package com.dentex.troller.ui
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -20,14 +22,20 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.dentex.troller.MainViewModel
@@ -53,8 +61,30 @@ private enum class Destination(
 @Composable
 fun DentexApp(viewModel: MainViewModel = viewModel()) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    var destination by remember { mutableStateOf(Destination.CONNECT) }
+    var destination by remember { mutableStateOf(Destination.CHART) }
     val snackbarHostState = remember { SnackbarHostState() }
+
+    // Looks for the last remote whenever the app comes to the front without a link. The first
+    // time, the Bluetooth permissions are asked for; the scan starts once they are granted.
+    val context = LocalContext.current
+    var askedForPermissions by rememberSaveable { mutableStateOf(false) }
+    val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
+        if (BluetoothPermissions.hasBluetooth(context)) viewModel.autoConnect()
+    }
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    DisposableEffect(lifecycle) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event != Lifecycle.Event.ON_START) return@LifecycleEventObserver
+            if (BluetoothPermissions.hasBluetooth(context)) {
+                viewModel.autoConnect()
+            } else if (!askedForPermissions) {
+                askedForPermissions = true
+                permissionLauncher.launch(BluetoothPermissions.all)
+            }
+        }
+        lifecycle.addObserver(observer)
+        onDispose { lifecycle.removeObserver(observer) }
+    }
 
     LaunchedEffect(state.notice) {
         val notice = state.notice ?: return@LaunchedEffect
@@ -89,7 +119,7 @@ fun DentexApp(viewModel: MainViewModel = viewModel()) {
                 when (destination) {
                     Destination.CONNECT -> ConnectScreen(viewModel)
                     Destination.DASHBOARD -> DashboardScreen(viewModel)
-                    Destination.CHART -> ChartScreen(viewModel)
+                    Destination.CHART -> ChartScreen(viewModel, onOpenConnect = { destination = Destination.CONNECT })
                     Destination.CONTROLS -> ControlsScreen(viewModel)
                     Destination.ROUTE -> RouteScreen(viewModel)
                     Destination.DIAGNOSTICS -> DiagnosticsScreen(viewModel)

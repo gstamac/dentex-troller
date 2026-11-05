@@ -27,8 +27,10 @@ import com.dentex.troller.navigation.MissionProgress
 import com.dentex.troller.navigation.MissionTransfer
 import com.dentex.troller.navigation.Route
 import com.dentex.troller.navigation.Waypoint
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -39,6 +41,7 @@ import kotlinx.coroutines.flow.sample
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import java.util.Locale
 
 /** State rendered by the UI. */
@@ -53,6 +56,10 @@ data class MainUiState(
     val missionProgress: MissionProgress = MissionProgress(MissionProgress.Phase.IDLE),
     val downloadedRoute: Route? = null,
     val notice: String? = null,
+    /** Name of the remote that the running scan reconnects to when it shows up. */
+    val autoConnectTo: String? = null,
+    /** True from a lost link (or the app start) until the last remote is connected again. */
+    val reconnecting: Boolean = false,
 )
 
 /**
@@ -128,12 +135,29 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private var scanJob: Job? = null
 
+    private val connectionSettings =
+        application.getSharedPreferences(CONNECTION_SETTINGS, android.content.Context.MODE_PRIVATE)
+    private var autoConnectTarget: String? = null
+    private var autoConnectFound = false
+    private var reconnectJob: Job? = null
+
+    // After Disconnect the operator chose to stay offline; only a manual connect re-arms auto-connect.
+    private var userDisconnected = false
+
     init {
         viewModelScope.launch {
+            var linkWasUp = false
             transport.connectionState.collect { state ->
                 _uiState.update { it.copy(connectionState = state) }
                 when (state) {
-                    is ConnectionState.Ready -> motor.onConnected()
+                    is ConnectionState.Ready -> {
+                        connectionSettings.edit()
+                            .putString(KEY_LAST_DEVICE, state.deviceId)
+                            .putString(KEY_LAST_DEVICE_NAME, state.deviceName)
+                            .apply()
+                        _uiState.update { it.copy(reconnecting = false) }
+                        motor.onConnected()
+                    }
                     is ConnectionState.Disconnected, is ConnectionState.Failed -> {
                         motor.onDisconnected()
                         // Stop a running transfer; keep the outcome of a finished one visible.
@@ -143,9 +167,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         ) {
                             mission.cancel()
                         }
+                        // A lost or failed link (also a failed reconnect attempt) starts over,
+                        // unless the operator disconnected.
+                        if (linkWasUp) autoConnect()
                     }
                     else -> Unit
                 }
+                linkWasUp = state !is ConnectionState.Disconnected && state !is ConnectionState.Failed
             }
         }
         viewModelScope.launch {
@@ -197,9 +225,58 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
      * Starts a scan for nearby devices.
      *
      * A running scan is always replaced, so that the operator can switch the filter or retry
-     * without having to leave the screen first.
+     * without having to leave the screen first. A manual scan never connects on its own.
      */
     fun startScan(filterByService: Boolean = false) {
+        cancelReconnect()
+        runScan(filterByService, target = null, targetName = null, durationMillis = null)
+    }
+
+    /**
+     * Reconnects to the remote that was connected last: scans for it, connects when it shows up,
+     * and keeps retrying every [RECONNECT_PAUSE_MILLIS] until a link is open. Without a known
+     * remote it runs one plain scan instead. Does nothing while a link exists or is being opened,
+     * or after the operator disconnected. Connecting sends no motor command, and the transport
+     * drops queued writes with the old link, so nothing is replayed.
+     */
+    fun autoConnect() {
+        if (userDisconnected || reconnectJob?.isActive == true || !linkDown()) return
+        val last = connectionSettings.getString(KEY_LAST_DEVICE, null)
+        if (last == null) {
+            if (!_uiState.value.scanning) runScan(false, target = null, targetName = null, durationMillis = AUTO_SCAN_MILLIS)
+            return
+        }
+        val name = connectionSettings.getString(KEY_LAST_DEVICE_NAME, null) ?: last
+        _uiState.update { it.copy(reconnecting = true) }
+        reconnectJob = viewModelScope.launch {
+            while (linkDown()) {
+                autoConnectFound = false
+                if (scanner.isBluetoothEnabled) {
+                    runScan(filterByService = false, target = last, targetName = name, durationMillis = AUTO_SCAN_MILLIS)
+                    scanJob?.join()
+                } else {
+                    _uiState.update { it.copy(bluetoothEnabled = false) }
+                }
+                if (autoConnectFound) break
+                delay(RECONNECT_PAUSE_MILLIS)
+            }
+        }
+    }
+
+    private fun linkDown(): Boolean {
+        val link = _uiState.value.connectionState
+        return link is ConnectionState.Disconnected || link is ConnectionState.Failed
+    }
+
+    /** The operator took over: stops retrying, and stops a scan that would connect on its own. */
+    private fun cancelReconnect() {
+        reconnectJob?.cancel()
+        reconnectJob = null
+        if (autoConnectTarget != null) stopScan()
+        _uiState.update { it.copy(reconnecting = false) }
+    }
+
+    private fun runScan(filterByService: Boolean, target: String?, targetName: String?, durationMillis: Long?) {
         if (!scanner.isBluetoothEnabled) {
             notifyUser("Bluetooth is switched off on the phone")
             _uiState.update { it.copy(bluetoothEnabled = false) }
@@ -207,40 +284,62 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
         _uiState.update { it.copy(bluetoothEnabled = true) }
         scanJob?.cancel()
-        scanJob = null
-        _uiState.update { it.copy(scanning = true, devices = emptyList()) }
-        scanJob = viewModelScope.launch {
+        autoConnectTarget = target
+        _uiState.update { it.copy(scanning = true, devices = emptyList(), autoConnectTo = target?.let { targetName }) }
+        lateinit var job: Job
+        job = viewModelScope.launch {
             try {
-                scanner.scan(filterByService).collect { result ->
-                    log.event(
-                        "SCAN",
-                        "${result.deviceName ?: "(no name)"} ${result.deviceId} " +
-                            "${result.rssi} dBm " +
-                            "services=${result.serviceUuids.joinToString(",").ifEmpty { "none" }}",
-                    )
-                    _uiState.update { state ->
-                        val existing = state.devices.indexOfFirst { it.deviceId == result.deviceId }
-                        val enriched = result.copy(deviceName = result.deviceName ?: result.deviceId)
-                        if (existing < 0) {
-                            state.copy(devices = state.devices + enriched)
-                        } else {
-                            // The modern and the legacy scanner both report the same device.
-                            // Keep the richest information that either of them provided.
-                            val known = state.devices[existing]
-                            val merged = known.copy(
-                                deviceName = known.deviceName ?: enriched.deviceName,
-                                rssi = maxOf(known.rssi, enriched.rssi),
-                                serviceUuids = known.serviceUuids.ifEmpty { enriched.serviceUuids },
-                            )
-                            state.copy(devices = state.devices.toMutableList().also { it[existing] = merged })
-                        }
-                    }
+                val scan = scanner.scan(filterByService)
+                if (durationMillis == null) {
+                    scan.collect(::onScanResult)
+                } else {
+                    withTimeoutOrNull(durationMillis) { scan.collect(::onScanResult) }
                 }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (error: Exception) {
                 notifyUser(error.message ?: "Scan failed")
             } finally {
-                _uiState.update { it.copy(scanning = false) }
+                // A replaced scan finishes after its successor started; leave the new one's state alone.
+                if (scanJob === job) {
+                    scanJob = null
+                    autoConnectTarget = null
+                    _uiState.update { it.copy(scanning = false, autoConnectTo = null) }
+                }
             }
+        }
+        scanJob = job
+    }
+
+    private fun onScanResult(result: BleScanResult) {
+        log.event(
+            "SCAN",
+            "${result.deviceName ?: "(no name)"} ${result.deviceId} " +
+                "${result.rssi} dBm " +
+                "services=${result.serviceUuids.joinToString(",").ifEmpty { "none" }}",
+        )
+        _uiState.update { state ->
+            val existing = state.devices.indexOfFirst { it.deviceId == result.deviceId }
+            val enriched = result.copy(deviceName = result.deviceName ?: result.deviceId)
+            if (existing < 0) {
+                state.copy(devices = state.devices + enriched)
+            } else {
+                // The modern and the legacy scanner both report the same device.
+                // Keep the richest information that either of them provided.
+                val known = state.devices[existing]
+                val merged = known.copy(
+                    deviceName = known.deviceName ?: enriched.deviceName,
+                    rssi = maxOf(known.rssi, enriched.rssi),
+                    serviceUuids = known.serviceUuids.ifEmpty { enriched.serviceUuids },
+                )
+                state.copy(devices = state.devices.toMutableList().also { it[existing] = merged })
+            }
+        }
+        if (result.deviceId == autoConnectTarget) {
+            autoConnectTarget = null
+            log.event("SCAN", "found the last remote ${result.deviceId}, connecting")
+            autoConnectFound = true
+            openLink(result.deviceId)
         }
     }
 
@@ -248,19 +347,28 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun stopScan() {
         scanJob?.cancel()
         scanJob = null
-        _uiState.update { it.copy(scanning = false) }
+        autoConnectTarget = null
+        _uiState.update { it.copy(scanning = false, autoConnectTo = null) }
     }
 
     /** Connects to the motor with the given Bluetooth address. */
     fun connect(deviceId: String) {
+        userDisconnected = false
+        cancelReconnect()
+        openLink(deviceId)
+    }
+
+    private fun openLink(deviceId: String) {
         stopScan()
         viewModelScope.launch {
             transport.connect(deviceId)
         }
     }
 
-    /** Disconnects from the motor. */
+    /** Disconnects from the motor. Auto-connect stays off until the next manual connect. */
     fun disconnect() {
+        userDisconnected = true
+        cancelReconnect()
         viewModelScope.launch {
             transport.disconnect()
         }
@@ -416,5 +524,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
         const val CHART_SETTINGS = "chart"
         const val KEY_SHOW_RAINBOW = "show_rainbow"
+
+        const val CONNECTION_SETTINGS = "connection"
+        const val KEY_LAST_DEVICE = "last_device"
+        const val KEY_LAST_DEVICE_NAME = "last_device_name"
+
+        /** How long the automatic scan looks for the last remote before giving up. */
+        const val AUTO_SCAN_MILLIS = 30_000L
+
+        /** Pause between two reconnect scans. */
+        const val RECONNECT_PAUSE_MILLIS = 5_000L
     }
 }
