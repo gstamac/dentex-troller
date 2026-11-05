@@ -12,11 +12,12 @@ object ChartGeoJson {
      * The boat position. The heading is left out when the motor has not reported one, so the
      * chart shows a dot instead of an arrow pointing in an invented direction.
      */
-    fun boat(latitude: Double?, longitude: Double?, headingDegrees: Float?, stale: Boolean): String {
-        if (latitude == null || longitude == null) return EMPTY
-        val heading = headingDegrees?.let { String.format(Locale.US, ""","heading":%.1f""", it) } ?: ""
+    fun boat(position: BoatPosition?): String {
+        if (position == null) return EMPTY
+        val heading = position.headingDegrees?.let { String.format(Locale.US, ""","heading":%.1f""", it) } ?: ""
         return """{"type":"FeatureCollection","features":[{"type":"Feature",""" +
-            """"properties":{"stale":$stale$heading},"geometry":${point(latitude, longitude)}}]}"""
+            """"properties":{"source":"${position.source.property}","stale":${position.stale}$heading},""" +
+            """"geometry":${point(position.latitude, position.longitude)}}]}"""
     }
 
     /** The route as one line; empty below two waypoints. */

@@ -84,7 +84,7 @@ AGP 9 compiles the Kotlin sources of the Android modules with its built-in Kotli
 adb pair 192.168.88.101:33977
 ```
 ```bash
-adb connect 192.168.88.101:42037
+adb connect 192.168.88.101:34387
 ```
 
 ```bash
@@ -98,6 +98,9 @@ adb disconnect
 ```
 ```bash
 adb -s $device install 'C:\Work\github\dentex-troller\app\build\outputs\apk\debug\app-debug.apk'
+```
+```bash
+Get-ChildItem -Path 'tools/charts/build' -File | ForEach-Object { adb -s $device push $_.FullName "/sdcard/Android/data/com.dentex.troller/files/charts/" }
 ```
 ```bash
 adb -s $device push tools/charts/build/adriatic.pmtiles /sdcard/Android/data/com.dentex.troller/files/charts/adriatic.pmtiles
@@ -137,7 +140,10 @@ within range before it answers.
    profile is only reported after a heartbeat with a valid checksum was received.
 3. **Chart** — an offline depth chart of the Adriatic with the boat position and heading from the
    motor telemetry. Tap the chart for the depth or a seamark, long-press to add a waypoint to the route. The
-   **Rainbow** chip switches the optional rainbow depth layer on and off. The chart never sends
+   **Rainbow** chip switches the optional rainbow depth layer on and off. The boat is green when
+   the position comes from the motor and light blue when the motor has no recent fix and the
+   phone's own GPS is used instead (**Use phone GPS** asks for the permission); it turns grey when
+   neither has a recent fix. The phone position is only displayed. The chart never sends
    anything to the motor. It needs the chart file, see [Offline chart](#offline-chart).
 4. **Controls** — propulsion commands stay disabled until a type 110 motor was confirmed. The stop
    command is always available from the top bar. Switching to a mode asks for a confirmation.

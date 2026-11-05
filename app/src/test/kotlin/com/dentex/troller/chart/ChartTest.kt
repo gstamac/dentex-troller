@@ -127,18 +127,79 @@ class ChartGeoJsonTest {
 
     @Test
     fun anUnknownPositionDrawsNoBoat() {
-        assertTrue(ChartGeoJson.boat(null, 14.8, 90f, stale = false).contains("\"features\":[]"))
+        assertTrue(ChartGeoJson.boat(null).contains("\"features\":[]"))
     }
 
     @Test
     fun theBoatIsLongitudeFirstAndOnlyCarriesAReportedHeading() {
-        val withHeading = ChartGeoJson.boat(44.2, 14.8, 87.25f, stale = false)
+        val withHeading = ChartGeoJson.boat(BoatPosition(44.2, 14.8, 87.25f, PositionSource.MOTOR, stale = false))
         assertTrue(withHeading.contains("[14.8000000,44.2000000]"))
         assertTrue(withHeading.contains("\"heading\":87.3") || withHeading.contains("\"heading\":87.2"))
+        assertTrue(withHeading.contains("\"source\":\"motor\""))
 
-        val withoutHeading = ChartGeoJson.boat(44.2, 14.8, null, stale = true)
+        val withoutHeading = ChartGeoJson.boat(BoatPosition(44.2, 14.8, null, PositionSource.PHONE, stale = true))
         assertFalse(withoutHeading.contains("heading"))
         assertTrue(withoutHeading.contains("\"stale\":true"))
+        assertTrue(withoutHeading.contains("\"source\":\"phone\""))
+    }
+
+    @Test
+    fun everySourceHasAnArrowImage() {
+        val json = ChartStyle.json("/charts/adriatic.pmtiles", night = false)
+        assertTrue(json.contains("[\"concat\", \"boat-arrow-\", [\"get\", \"source\"]]"))
+        assertEquals("boat-arrow-motor", ChartStyle.boatImage(PositionSource.MOTOR))
+        assertEquals("boat-arrow-phone", ChartStyle.boatImage(PositionSource.PHONE))
+    }
+}
+
+class BoatPositionTest {
+
+    private val phone = PhoneFix(44.3, 14.9, bearingDegrees = 120f)
+
+    private fun choose(motorFresh: Boolean, phone: PhoneFix?, phoneFresh: Boolean, motor: Boolean = true) =
+        BoatPosition.choose(
+            motorLatitude = if (motor) 44.2 else null,
+            motorLongitude = if (motor) 14.8 else null,
+            motorHeading = 90f,
+            motorFresh = motorFresh,
+            phone = phone,
+            phoneFresh = phoneFresh,
+        )
+
+    @Test
+    fun aFreshMotorFixWinsOverThePhone() {
+        val position = choose(motorFresh = true, phone = phone, phoneFresh = true)!!
+        assertEquals(PositionSource.MOTOR, position.source)
+        assertEquals(90f, position.headingDegrees)
+        assertFalse(position.stale)
+    }
+
+    @Test
+    fun thePhoneFillsInWhenTheMotorHasNoFix() {
+        val position = choose(motorFresh = true, phone = phone, phoneFresh = true, motor = false)!!
+        assertEquals(PositionSource.PHONE, position.source)
+        assertEquals(44.3, position.latitude, 0.0)
+        assertEquals(120f, position.headingDegrees)
+    }
+
+    @Test
+    fun thePhoneFillsInWhenTheMotorFixIsStale() {
+        assertEquals(PositionSource.PHONE, choose(motorFresh = false, phone = phone, phoneFresh = true)!!.source)
+    }
+
+    @Test
+    fun withoutAnyFreshFixTheLastMotorFixIsShownStale() {
+        val position = choose(motorFresh = false, phone = phone, phoneFresh = false)!!
+        assertEquals(PositionSource.MOTOR, position.source)
+        assertTrue(position.stale)
+        val phoneOnly = choose(motorFresh = false, phone = phone, phoneFresh = false, motor = false)!!
+        assertEquals(PositionSource.PHONE, phoneOnly.source)
+        assertTrue(phoneOnly.stale)
+    }
+
+    @Test
+    fun noFixAtAllDrawsNothing() {
+        assertNull(choose(motorFresh = true, phone = null, phoneFresh = false, motor = false))
     }
 
     @Test

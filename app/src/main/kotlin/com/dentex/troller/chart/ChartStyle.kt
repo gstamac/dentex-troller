@@ -76,7 +76,8 @@ object ChartStyle {
     const val LAYER_LAND = "land"
     const val LAYER_BOAT_ARROW = "boat-arrow"
 
-    const val IMAGE_BOAT = "boat-arrow"
+    /** Arrow image of each position source: "boat-arrow-motor" and "boat-arrow-phone". */
+    fun boatImage(source: PositionSource): String = "boat-arrow-${source.property}"
     const val FONT = "NotoSansRegular"
 
     /** Adriatic bounds of the chart file: west, south, east, north. */
@@ -91,7 +92,8 @@ object ChartStyle {
         val label: String,
         val labelHalo: String,
         val route: String,
-        val boat: String,
+        val boatMotor: String,
+        val boatPhone: String,
         val boatStale: String,
     )
 
@@ -104,7 +106,8 @@ object ChartStyle {
         label = "#2b5573",
         labelHalo = "#f8fbfd",
         route = "#b0412e",
-        boat = "#d24a1f",
+        boatMotor = "#2e9e44",
+        boatPhone = "#5bb8f0",
         boatStale = "#8a8a8a",
     )
 
@@ -117,7 +120,8 @@ object ChartStyle {
         label = "#9cc3dc",
         labelHalo = "#0c1f2d",
         route = "#e0745f",
-        boat = "#ff8a4c",
+        boatMotor = "#5fd17a",
+        boatPhone = "#8dd0f7",
         boatStale = "#6b6b6b",
     )
 
@@ -218,11 +222,12 @@ object ChartStyle {
               "paint": { "text-color": "#ffffff" } },
             { "id": "boat-dot", "type": "circle", "source": "$SOURCE_BOAT",
               "filter": ["!", ["has", "heading"]],
-              "paint": { "circle-radius": 7, "circle-color": ["case", ["get", "stale"], "${p.boatStale}", "${p.boat}"],
+              "paint": { "circle-radius": 7, "circle-color": ["case", ["get", "stale"], "${p.boatStale}",
+                ["==", ["get", "source"], "${PositionSource.PHONE.property}"], "${p.boatPhone}", "${p.boatMotor}"],
                 "circle-stroke-color": "#ffffff", "circle-stroke-width": 2 } },
             { "id": "$LAYER_BOAT_ARROW", "type": "symbol", "source": "$SOURCE_BOAT",
               "filter": ["has", "heading"],
-              "layout": { "icon-image": "$IMAGE_BOAT", "icon-rotate": ["get", "heading"], "icon-rotation-alignment": "map",
+              "layout": { "icon-image": ["concat", "boat-arrow-", ["get", "source"]], "icon-rotate": ["get", "heading"], "icon-rotation-alignment": "map",
                 "icon-allow-overlap": true, "icon-ignore-placement": true },
               "paint": { "icon-opacity": ["case", ["get", "stale"], 0.45, 1.0] } }
           ]

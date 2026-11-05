@@ -1,11 +1,16 @@
 package com.dentex.troller.ui
 
+import android.Manifest
 import android.content.Context
+import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.RectF
+import android.location.Location
+import android.location.LocationManager
+import android.os.SystemClock
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -18,6 +23,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material3.Button
@@ -33,6 +39,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -43,14 +50,21 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.content.ContextCompat
+import androidx.core.location.LocationListenerCompat
+import androidx.core.location.LocationManagerCompat
+import androidx.core.location.LocationRequestCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.dentex.troller.MainViewModel
+import com.dentex.troller.chart.BoatPosition
 import com.dentex.troller.chart.ChartGeoJson
 import com.dentex.troller.chart.ChartStore
 import com.dentex.troller.chart.ChartStyle
+import com.dentex.troller.chart.PhoneFix
+import com.dentex.troller.chart.PositionSource
 import com.dentex.troller.haswing.MotorTelemetry
 import com.dentex.troller.navigation.MissionProgress
 import com.dentex.troller.navigation.Waypoint
@@ -63,6 +77,7 @@ import org.maplibre.android.maps.MapView
 import org.maplibre.android.maps.Style
 import org.maplibre.android.style.sources.GeoJsonSource
 import org.maplibre.geojson.Point
+import kotlinx.coroutines.delay
 
 /**
  * Offline depth chart with the boat position and the route being edited.
@@ -124,9 +139,36 @@ private fun ChartView(
     var tapped by remember { mutableStateOf<String?>(null) }
     val longPress by rememberUpdatedState(onLongPress)
 
-    val latitude = telemetry.latitude
-    val longitude = telemetry.longitude
-    val hasPosition = latitude != null && longitude != null
+    var locationAllowed by remember { mutableStateOf(hasLocationPermission(context)) }
+    val locationRequest = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
+        locationAllowed = hasLocationPermission(context)
+    }
+    val phoneLocation = phoneLocation(context, locationAllowed)
+    // Ticks once a second so a fix that stops updating turns stale on screen.
+    val now by produceState(SystemClock.elapsedRealtime()) {
+        while (true) {
+            delay(1_000)
+            value = SystemClock.elapsedRealtime()
+        }
+    }
+    val phoneFresh = phoneLocation != null &&
+        now - phoneLocation.elapsedRealtimeNanos / 1_000_000 <= PHONE_STALE_AFTER_MILLIS
+    val motorFresh = telemetry.connected && !telemetry.isStale(STALE_AFTER_MILLIS)
+    val position = BoatPosition.choose(
+        motorLatitude = telemetry.latitude,
+        motorLongitude = telemetry.longitude,
+        motorHeading = telemetry.headingDegrees,
+        motorFresh = motorFresh,
+        phone = phoneLocation?.let { fix ->
+            // The phone's bearing is its course, which is meaningless while drifting slowly.
+            val moving = fix.hasBearing() && fix.hasSpeed() && fix.speed >= MIN_COURSE_SPEED_MPS
+            PhoneFix(fix.latitude, fix.longitude, if (moving) fix.bearing else null)
+        },
+        phoneFresh = phoneFresh,
+    )
+    val latitude = position?.latitude
+    val longitude = position?.longitude
+    val hasPosition = position != null
 
     DisposableEffect(mapView) {
         mapView.getMapAsync { m ->
@@ -192,16 +234,16 @@ private fun ChartView(
         style = null
         val json = ChartStyle.json(chart.file.absolutePath, night, rainbow?.file?.absolutePath)
         m.setStyle(Style.Builder().fromJson(json)) { loaded ->
-            loaded.addImage(ChartStyle.IMAGE_BOAT, boatArrow(context, if (night) ChartStyle.NIGHT.boat else ChartStyle.DAY.boat))
+            val palette = if (night) ChartStyle.NIGHT else ChartStyle.DAY
+            loaded.addImage(ChartStyle.boatImage(PositionSource.MOTOR), boatArrow(context, palette.boatMotor))
+            loaded.addImage(ChartStyle.boatImage(PositionSource.PHONE), boatArrow(context, palette.boatPhone))
             loaded.addImages(HashMap(SeamarkIcons.all(context)))
             style = loaded
         }
     }
 
-    val stale = !telemetry.connected || telemetry.isStale(STALE_AFTER_MILLIS)
-    LaunchedEffect(style, latitude, longitude, telemetry.headingDegrees, stale) {
-        style?.getSourceAs<GeoJsonSource>(ChartStyle.SOURCE_BOAT)
-            ?.setGeoJson(ChartGeoJson.boat(latitude, longitude, telemetry.headingDegrees, stale))
+    LaunchedEffect(style, position) {
+        style?.getSourceAs<GeoJsonSource>(ChartStyle.SOURCE_BOAT)?.setGeoJson(ChartGeoJson.boat(position))
     }
     LaunchedEffect(style, route) {
         val loaded = style ?: return@LaunchedEffect
@@ -250,6 +292,17 @@ private fun ChartView(
                 ),
             )
             if (rainbow != null) RainbowLegend()
+            if (!locationAllowed) {
+                FilterChip(
+                    selected = false,
+                    onClick = { locationRequest.launch(Manifest.permission.ACCESS_FINE_LOCATION) },
+                    label = { Text("Use phone GPS") },
+                    colors = FilterChipDefaults.filterChipColors(
+                        containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
+                    ),
+                )
+            }
+            if (position != null) PositionSourceLabel(position, night)
         }
 
         Surface(
@@ -271,6 +324,89 @@ private fun ChartView(
                 icon = { Icon(Icons.Default.LocationOn, contentDescription = null) },
                 text = { Text("Follow boat") },
                 modifier = Modifier.align(Alignment.BottomEnd).padding(12.dp),
+            )
+        }
+    }
+}
+
+private fun hasLocationPermission(context: Context): Boolean =
+    ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) ==
+        PackageManager.PERMISSION_GRANTED
+
+/** The phone's latest GPS fix while the chart is on screen, or null without one. */
+@Composable
+private fun phoneLocation(context: Context, allowed: Boolean): Location? {
+    var location by remember { mutableStateOf<Location?>(null) }
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    DisposableEffect(allowed, lifecycle) {
+        val manager = context.getSystemService(LocationManager::class.java)
+        if (!allowed || manager == null || LocationManager.GPS_PROVIDER !in manager.allProviders) {
+            return@DisposableEffect onDispose { }
+        }
+        val listener = LocationListenerCompat { location = it }
+        val request = LocationRequestCompat.Builder(PHONE_UPDATE_MILLIS)
+            .setQuality(LocationRequestCompat.QUALITY_HIGH_ACCURACY)
+            .build()
+        var listening = false
+        fun start() {
+            if (listening || !hasLocationPermission(context)) return
+            try {
+                LocationManagerCompat.requestLocationUpdates(
+                    manager, LocationManager.GPS_PROVIDER, request, ContextCompat.getMainExecutor(context), listener,
+                )
+                listening = true
+                if (location == null) location = manager.getLastKnownLocation(LocationManager.GPS_PROVIDER)
+            } catch (_: SecurityException) {
+                // Permission revoked while the app was running; the chart falls back to the motor only.
+            }
+        }
+        fun stop() {
+            if (listening) LocationManagerCompat.removeUpdates(manager, listener)
+            listening = false
+        }
+        // GPS runs only while the chart is visible, to spare the battery.
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_START -> start()
+                Lifecycle.Event.ON_STOP -> stop()
+                else -> Unit
+            }
+        }
+        lifecycle.addObserver(observer)
+        onDispose {
+            lifecycle.removeObserver(observer)
+            stop()
+        }
+    }
+    return location
+}
+
+/** Which GPS the marker is from, in the marker's colour. */
+@Composable
+private fun PositionSourceLabel(position: BoatPosition, night: Boolean) {
+    val palette = if (night) ChartStyle.NIGHT else ChartStyle.DAY
+    val color = when {
+        position.stale -> palette.boatStale
+        position.source == PositionSource.PHONE -> palette.boatPhone
+        else -> palette.boatMotor
+    }
+    Surface(
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
+        shape = MaterialTheme.shapes.small,
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(10.dp)
+                    .background(Color(android.graphics.Color.parseColor(color)), CircleShape),
+            )
+            Text(
+                text = position.source.label + if (position.stale) " · no recent fix" else "",
+                style = MaterialTheme.typography.labelSmall,
             )
         }
     }
@@ -392,6 +528,9 @@ private const val START_LATITUDE = 43.6
 private const val START_LONGITUDE = 15.6
 private const val FOLLOW_ANIMATION_MILLIS = 500
 private const val STALE_AFTER_MILLIS = 5_000L
+private const val PHONE_STALE_AFTER_MILLIS = 10_000L
+private const val PHONE_UPDATE_MILLIS = 1_000L
+private const val MIN_COURSE_SPEED_MPS = 0.5f
 private const val BOAT_ICON_DP = 30f
 private const val LEGEND_MAX_DEPTH = 500
 private const val SEAMARK_TAP_DP = 16f
