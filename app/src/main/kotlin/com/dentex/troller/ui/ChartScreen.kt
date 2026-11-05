@@ -57,6 +57,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.dentex.troller.BuildConfig
 import com.dentex.troller.MainViewModel
 import com.dentex.troller.ble.ConnectionState
 import com.dentex.troller.chart.BoatPosition
@@ -359,9 +360,31 @@ private fun hasLocationPermission(context: Context): Boolean =
     ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) ==
         PackageManager.PERMISSION_GRANTED
 
+/** The fixed position of the fakeGps build, renewed every second so it never turns stale. */
+@Composable
+private fun fakePhoneLocation(position: String): Location {
+    val (latitude, longitude) = position.split(",").map { it.trim().toDouble() }
+    val location by produceState(fakeFix(latitude, longitude)) {
+        while (true) {
+            delay(PHONE_UPDATE_MILLIS)
+            value = fakeFix(latitude, longitude)
+        }
+    }
+    return location
+}
+
+private fun fakeFix(latitude: Double, longitude: Double) = Location(LocationManager.GPS_PROVIDER).apply {
+    this.latitude = latitude
+    this.longitude = longitude
+    accuracy = 5f
+    time = System.currentTimeMillis()
+    elapsedRealtimeNanos = SystemClock.elapsedRealtimeNanos()
+}
+
 /** The phone's latest GPS fix while the chart is on screen, or null without one. */
 @Composable
 private fun phoneLocation(context: Context, allowed: Boolean): Location? {
+    BuildConfig.FAKE_PHONE_LOCATION?.let { return fakePhoneLocation(it) }
     var location by remember { mutableStateOf<Location?>(null) }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     DisposableEffect(allowed, lifecycle) {

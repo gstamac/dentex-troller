@@ -100,6 +100,9 @@ adb disconnect
 adb -s $device install 'C:\Work\github\dentex-troller\app\build\outputs\apk\debug\app-debug.apk'
 ```
 ```bash
+adb -s $device install 'C:\Work\github\dentex-troller\app\build\outputs\apk\fakeGps\app-fakeGps.apk'
+```
+```bash
 Get-ChildItem -Path 'tools/charts/build' -File | ForEach-Object { adb -s $device push $_.FullName "/sdcard/Android/data/com.dentex.troller/files/charts/" }
 ```
 ```bash

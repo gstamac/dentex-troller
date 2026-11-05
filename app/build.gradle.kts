@@ -13,12 +13,20 @@ android {
         targetSdk = 36
         versionCode = 1
         versionName = "0.1.0"
+        // "latitude,longitude" makes the phone GPS report only this position; set by the fakeGps build.
+        buildConfigField("String", "FAKE_PHONE_LOCATION", "null")
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+        }
+        // For testing on land: the phone GPS always reports one position. Installs over the debug app.
+        create("fakeGps") {
+            initWith(getByName("debug"))
+            matchingFallbacks += "debug"
+            buildConfigField("String", "FAKE_PHONE_LOCATION", "\"44.216686739950376,14.793421749585923\"")
         }
     }
 
@@ -29,6 +37,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     packaging {
