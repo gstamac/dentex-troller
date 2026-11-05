@@ -69,6 +69,7 @@ object ChartStyle {
     const val SOURCE_ROUTE_LINE = "route-line"
     const val SOURCE_ROUTE_POINTS = "route-points"
     const val SOURCE_OTHER_ROUTES = "other-routes"
+    const val SOURCE_PINS = "pins"
 
     const val LAYER_DEPTH_AREA = "depth-area"
     const val LAYER_RAINBOW = "depth-rainbow"
@@ -79,6 +80,8 @@ object ChartStyle {
     const val LAYER_ROUTE_POINTS = "route-points"
     const val LAYER_OTHER_ROUTE_LINE = "other-route-line"
     const val LAYER_OTHER_ROUTE_POINT = "other-route-point"
+    const val LAYER_PIN = "pin"
+    const val IMAGE_PIN = "pin"
 
     /** Arrow image of each position source: "boat-arrow-motor" and "boat-arrow-phone". */
     fun boatImage(source: PositionSource): String = "boat-arrow-${source.property}"
@@ -98,6 +101,7 @@ object ChartStyle {
         val route: String,
         val routeSelected: String,
         val otherRoute: String,
+        val pin: String,
         val boatMotor: String,
         val boatPhone: String,
         val boatStale: String,
@@ -114,6 +118,7 @@ object ChartStyle {
         route = "#b0412e",
         routeSelected = "#f2b705",
         otherRoute = "#7b6a92",
+        pin = "#d9480f",
         boatMotor = "#2e9e44",
         boatPhone = "#5bb8f0",
         boatStale = "#8a8a8a",
@@ -130,6 +135,7 @@ object ChartStyle {
         route = "#e0745f",
         routeSelected = "#ffd34d",
         otherRoute = "#a99cc2",
+        pin = "#ff8a3d",
         boatMotor = "#5fd17a",
         boatPhone = "#8dd0f7",
         boatStale = "#6b6b6b",
@@ -176,6 +182,7 @@ object ChartStyle {
             "$SOURCE_CHART": { "type": "vector", "url": ${quote("pmtiles://file://$chartPath")} },
             $rainbowSource
             "$SOURCE_BOAT": { "type": "geojson", "data": { "type": "FeatureCollection", "features": [] } },
+            "$SOURCE_PINS": { "type": "geojson", "data": { "type": "FeatureCollection", "features": [] } },
             "$SOURCE_OTHER_ROUTES": { "type": "geojson", "data": { "type": "FeatureCollection", "features": [] } },
             "$SOURCE_ROUTE_LINE": { "type": "geojson", "data": { "type": "FeatureCollection", "features": [] } },
             "$SOURCE_ROUTE_POINTS": { "type": "geojson", "data": { "type": "FeatureCollection", "features": [] } }
@@ -222,6 +229,11 @@ object ChartStyle {
               "layout": { "text-field": ["get", "light"], "text-font": ["$FONT"], "text-size": 10,
                 "text-anchor": "left", "text-offset": [0.9, 0], "text-optional": true },
               "paint": { "text-color": "$LIGHT_LABEL", "text-halo-color": "${p.labelHalo}", "text-halo-width": 1.5 } },
+            { "id": "$LAYER_PIN", "type": "symbol", "source": "$SOURCE_PINS",
+              "layout": { "icon-image": "$IMAGE_PIN", "icon-anchor": "bottom", "icon-allow-overlap": true,
+                "text-field": ["step", ["zoom"], "", 12, ["get", "name"]], "text-font": ["$FONT"], "text-size": 11,
+                "text-anchor": "left", "text-offset": [0.7, -1.2], "text-optional": true },
+              "paint": { "text-color": "${p.pin}", "text-halo-color": "${p.labelHalo}", "text-halo-width": 1.5 } },
             { "id": "$LAYER_OTHER_ROUTE_LINE", "type": "line", "source": "$SOURCE_OTHER_ROUTES",
               "filter": ["==", ["geometry-type"], "LineString"],
               "layout": { "line-join": "round", "line-cap": "round" },

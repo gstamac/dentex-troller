@@ -27,6 +27,8 @@ import com.dentex.troller.mavlink.MavlinkMessage
 import com.dentex.troller.navigation.MissionProgress
 import com.dentex.troller.navigation.MissionTransfer
 import com.dentex.troller.navigation.Route
+import com.dentex.troller.navigation.Gpx
+import com.dentex.troller.navigation.PinLibrary
 import com.dentex.troller.navigation.RouteLibrary
 import com.dentex.troller.navigation.SavedRoute
 import com.dentex.troller.navigation.Waypoint
@@ -46,6 +48,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.updateAndGet
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.util.Locale
 import java.util.UUID
@@ -135,7 +138,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     /** The layer picked in the chart's layers menu. Kept across restarts. */
     val chartLayer: StateFlow<ChartLayer> = _chartLayer.asStateFlow()
 
-    private val routeStore = RouteStore(application)
+    private val routeStore = TextStore(application, "routes.txt", RouteLibrary(), RouteLibrary::decode, RouteLibrary::encode)
 
     // One writer at a time, in order, so an older library never overwrites a newer one.
     private val routeSaving = Dispatchers.IO.limitedParallelism(1)
@@ -143,6 +146,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     /** Every route kept on the phone and the selected one. Saved after every change. */
     val routes: StateFlow<RouteLibrary> = _routes.asStateFlow()
+
+    private val pinStore = TextStore(application, "pins.txt", PinLibrary(), PinLibrary::decode, PinLibrary::encode)
+    private val _pins = MutableStateFlow(pinStore.load())
+
+    /** Marked spots, imported from GPX. Saved after every change. */
+    val pins: StateFlow<PinLibrary> = _pins.asStateFlow()
+
+    private val _showPins = MutableStateFlow(chartSettings.getBoolean(KEY_SHOW_PINS, true))
+
+    /** Whether the chart draws the pins. Kept across restarts. */
+    val showPins: StateFlow<Boolean> = _showPins.asStateFlow()
 
     /**
      * The waypoints of the selected route, shared by the route screen and the chart.
@@ -518,6 +532,73 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun newRouteId(): String = UUID.randomUUID().toString()
 
+    /**
+     * Imports a GPX file, such as the markers exported from the Navionics Boating app. Its
+     * waypoints become pins, skipping ones already there, and its routes become saved routes.
+     */
+    fun importGpx(uri: Uri) {
+        viewModelScope.launch {
+            try {
+                val bytes = withContext(Dispatchers.IO) {
+                    getApplication<Application>().contentResolver.openInputStream(uri)?.use { input ->
+                        val data = input.readNBytesCompat(MAX_GPX_BYTES + 1)
+                        require(data.size <= MAX_GPX_BYTES) { "The file is larger than ${MAX_GPX_BYTES / 1_048_576} MB" }
+                        data
+                    } ?: throw IllegalArgumentException("The file could not be opened")
+                }
+                val content = withContext(Dispatchers.Default) { Gpx.parse(bytes, ::newRouteId) }
+                val (merged, added) = _pins.value.merge(content.pins)
+                editPins { merged }
+                val now = System.currentTimeMillis()
+                content.routes.forEach { (name, points) ->
+                    editRoutes { library -> library.add(SavedRoute(newRouteId(), name, points, now)) }
+                }
+                setShowPins(true)
+                val skipped = content.pins.size - added
+                notifyUser(
+                    buildString {
+                        append("Imported $added pin(s)")
+                        if (skipped > 0) append(", $skipped already there")
+                        if (content.routes.isNotEmpty()) append(" and ${content.routes.size} route(s)")
+                    },
+                )
+            } catch (error: Exception) {
+                notifyUser("GPX import failed: ${error.message ?: "unknown error"}")
+            }
+        }
+    }
+
+    fun deletePin(id: String) {
+        editPins { it.delete(id) }
+    }
+
+    fun setShowPins(show: Boolean) {
+        _showPins.value = show
+        chartSettings.edit().putBoolean(KEY_SHOW_PINS, show).apply()
+    }
+
+    private fun editPins(change: (PinLibrary) -> PinLibrary) {
+        val updated = _pins.updateAndGet(change)
+        viewModelScope.launch(routeSaving) {
+            try {
+                pinStore.save(updated)
+            } catch (error: Exception) {
+                notifyUser("The pins could not be saved: ${error.message}")
+            }
+        }
+    }
+
+    private fun java.io.InputStream.readNBytesCompat(limit: Int): ByteArray {
+        val out = java.io.ByteArrayOutputStream()
+        val buffer = ByteArray(64 * 1024)
+        while (out.size() < limit) {
+            val read = read(buffer, 0, minOf(buffer.size, limit - out.size()))
+            if (read < 0) break
+            out.write(buffer, 0, read)
+        }
+        return out.toByteArray()
+    }
+
     /** Looks for the chart files again, for example after they were copied with adb. */
     fun refreshChart() {
         _chartFile.value = chartStore.current(ChartKind.DEPTHS)
@@ -606,6 +687,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         const val CHART_SETTINGS = "chart"
         const val KEY_SHOW_RAINBOW = "show_rainbow"
         const val KEY_CHART_LAYER = "layer"
+        const val KEY_SHOW_PINS = "show_pins"
+
+        /** A GPX file of pins is a few kilobytes; this only guards against picking the wrong file. */
+        const val MAX_GPX_BYTES = 20 * 1_048_576
 
         const val CONNECTION_SETTINGS = "connection"
         const val KEY_LAST_DEVICE = "last_device"

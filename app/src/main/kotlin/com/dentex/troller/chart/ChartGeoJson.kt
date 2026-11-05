@@ -1,5 +1,6 @@
 package com.dentex.troller.chart
 
+import com.dentex.troller.navigation.Pin
 import com.dentex.troller.navigation.SavedRoute
 import com.dentex.troller.navigation.Waypoint
 import java.util.Locale
@@ -55,6 +56,15 @@ object ChartGeoJson {
             line + route.waypoints.map {
                 """{"type":"Feature","properties":{"id":${quote(route.id)}},"geometry":${point(it.latitude, it.longitude)}}"""
             }
+        }
+        return """{"type":"FeatureCollection","features":[${features.joinToString(",")}]}"""
+    }
+
+    /** The pins, each with its id for a tap and its name for the label. */
+    fun pins(pins: List<Pin>): String {
+        val features = pins.map { pin ->
+            """{"type":"Feature","properties":{"id":${quote(pin.id)},"name":${quote(pin.name)}},""" +
+                """"geometry":${point(pin.latitude, pin.longitude)}}"""
         }
         return """{"type":"FeatureCollection","features":[${features.joinToString(",")}]}"""
     }

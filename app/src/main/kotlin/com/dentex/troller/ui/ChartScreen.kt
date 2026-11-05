@@ -28,21 +28,26 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -87,6 +92,8 @@ import com.dentex.troller.chart.PositionSource
 import com.dentex.troller.chart.RouteHit
 import com.dentex.troller.haswing.MotorTelemetry
 import com.dentex.troller.navigation.MissionProgress
+import com.dentex.troller.navigation.Pin
+import com.dentex.troller.navigation.PinLibrary
 import com.dentex.troller.navigation.RouteLibrary
 import com.dentex.troller.navigation.Waypoint
 import org.maplibre.android.camera.CameraPosition
@@ -99,6 +106,8 @@ import org.maplibre.android.maps.Style
 import org.maplibre.android.style.sources.GeoJsonSource
 import org.maplibre.geojson.Point
 import kotlinx.coroutines.delay
+import java.text.DateFormat
+import java.util.Date
 import kotlin.math.hypot
 
 /**
@@ -114,6 +123,11 @@ fun ChartScreen(viewModel: MainViewModel, onOpenConnect: () -> Unit) {
     val layer by viewModel.chartLayer.collectAsStateWithLifecycle()
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val routes by viewModel.routes.collectAsStateWithLifecycle()
+    val pins by viewModel.pins.collectAsStateWithLifecycle()
+    val showPins by viewModel.showPins.collectAsStateWithLifecycle()
+    val gpxImporter = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri?.let(viewModel::importGpx)
+    }
     val importer = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let(viewModel::importChart)
     }
@@ -163,6 +177,13 @@ fun ChartScreen(viewModel: MainViewModel, onOpenConnect: () -> Unit) {
             rename = viewModel::renameRoute,
             delete = viewModel::deleteRoute,
         ),
+        pins = PinOverlay(
+            library = pins,
+            show = showPins,
+            onShow = viewModel::setShowPins,
+            onImport = { gpxImporter.launch(arrayOf("*/*")) },
+            onDelete = viewModel::deletePin,
+        ),
     )
 }
 
@@ -180,6 +201,15 @@ internal class RouteActions(
     val delete: (String) -> Unit,
 )
 
+/** The pins and what the chart may do with them. */
+internal class PinOverlay(
+    val library: PinLibrary,
+    val show: Boolean,
+    val onShow: (Boolean) -> Unit,
+    val onImport: () -> Unit,
+    val onDelete: (String) -> Unit,
+)
+
 @Composable
 private fun ChartView(
     chart: ChartStore.InstalledChart,
@@ -192,6 +222,7 @@ private fun ChartView(
     onOpenConnect: () -> Unit,
     telemetry: MotorTelemetry,
     routes: RouteLibrary,
+    pins: PinOverlay,
     routeActions: RouteActions,
 ) {
     val context = LocalContext.current
@@ -202,7 +233,9 @@ private fun ChartView(
     var map by remember { mutableStateOf<MapLibreMap?>(null) }
     var style by remember { mutableStateOf<Style?>(null) }
     var follow by rememberSaveable { mutableStateOf(true) }
-    var tapped by remember { mutableStateOf<String?>(null) }
+    var tapped by remember { mutableStateOf<Tapped?>(null) }
+    val currentPins by rememberUpdatedState(pins)
+    var confirmDeletePin by remember { mutableStateOf<Pin?>(null) }
 
     // Route mode: taps edit routes instead of showing the depth.
     var routeMode by rememberSaveable { mutableStateOf(false) }
@@ -310,6 +343,15 @@ private fun ChartView(
                     }
                     return@addOnMapClickListener true
                 }
+                // The pin's tip is the spot and the icon rises above it, so the box reaches higher.
+                val pinBox = RectF(screen.x - reach, screen.y - reach, screen.x + reach, screen.y + 2.5f * reach)
+                val pinId = m.queryRenderedFeatures(pinBox, ChartStyle.LAYER_PIN).firstOrNull()?.getStringProperty("id")
+                val pin = currentPins.library.pins.firstOrNull { it.id == pinId }
+                if (pin != null) {
+                    val date = pin.timeMillis?.let { "\n" + DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(Date(it)) } ?: ""
+                    tapped = Tapped("Pin · ${pin.name}$date\n${ChartStyle.formatPosition(pin.latitude, pin.longitude)}", pin)
+                    return@addOnMapClickListener true
+                }
                 val mark = m.queryRenderedFeatures(box, ChartStyle.LAYER_SEAMARK_ICON, ChartStyle.LAYER_SEAMARK_DOT).firstOrNull()
                 if (mark != null) {
                     val at = (mark.geometry() as? Point)?.let { LatLng(it.latitude(), it.longitude()) } ?: point
@@ -319,7 +361,7 @@ private fun ChartView(
                         light = mark.getStringProperty("light"),
                         colour = mark.getStringProperty("colour"),
                     )
-                    tapped = "$text\n${ChartStyle.formatPosition(at.latitude, at.longitude)}"
+                    tapped = Tapped("$text\n${ChartStyle.formatPosition(at.latitude, at.longitude)}")
                     return@addOnMapClickListener true
                 }
                 val onLand = m.queryRenderedFeatures(screen, ChartStyle.LAYER_LAND).isNotEmpty()
@@ -330,7 +372,7 @@ private fun ChartView(
                     depth != null -> "Depth ${ChartStyle.bandLabel(depth)}"
                     else -> "No depth data here"
                 }
-                tapped = "$what\n${ChartStyle.formatPosition(point.latitude, point.longitude)}"
+                tapped = Tapped("$what\n${ChartStyle.formatPosition(point.latitude, point.longitude)}")
                 true
             }
             // In route mode, a press that starts on the selected waypoint drags it instead of
@@ -388,6 +430,7 @@ private fun ChartView(
             loaded.addImage(ChartStyle.boatImage(PositionSource.MOTOR), boatArrow(context, palette.boatMotor))
             loaded.addImage(ChartStyle.boatImage(PositionSource.PHONE), boatArrow(context, palette.boatPhone))
             loaded.addImages(HashMap(SeamarkIcons.all(context)))
+            loaded.addImage(ChartStyle.IMAGE_PIN, pinIcon(context, palette.pin))
             style = loaded
         }
     }
@@ -405,6 +448,10 @@ private fun ChartView(
     LaunchedEffect(style, routes, routeMode) {
         val others = if (routeMode) routes.routes.filter { it.id != routes.selectedId } else emptyList()
         style?.getSourceAs<GeoJsonSource>(ChartStyle.SOURCE_OTHER_ROUTES)?.setGeoJson(ChartGeoJson.otherRoutes(others))
+    }
+    LaunchedEffect(style, pins.library, pins.show) {
+        style?.getSourceAs<GeoJsonSource>(ChartStyle.SOURCE_PINS)
+            ?.setGeoJson(ChartGeoJson.pins(if (pins.show) pins.library.pins else emptyList()))
     }
     LaunchedEffect(map, follow, latitude, longitude) {
         val m = map ?: return@LaunchedEffect
@@ -448,6 +495,7 @@ private fun ChartView(
                 layer = layer,
                 installed = { it.needs == null || it.needs in installedKinds },
                 onPick = onPickLayer,
+                pins = pins,
             )
             RouteModeButton(
                 active = routeMode,
@@ -495,16 +543,43 @@ private fun ChartView(
                     shape = MaterialTheme.shapes.small,
                     tonalElevation = 2.dp,
                 ) {
-                    Text(
-                        text = tapped ?: "Tap for the depth or a seamark.",
-                        style = MaterialTheme.typography.bodySmall,
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                    )
+                    Column(modifier = Modifier.padding(start = 10.dp, end = 10.dp, top = 6.dp, bottom = if (tapped?.pin != null) 0.dp else 6.dp)) {
+                        Text(
+                            text = tapped?.text ?: "Tap for the depth, a seamark or a pin.",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                        tapped?.pin?.let { pin ->
+                            TextButton(onClick = { confirmDeletePin = pin }) {
+                                Text("Delete pin", color = MaterialTheme.colorScheme.error)
+                            }
+                        }
+                    }
                 }
             }
         }
     }
+
+    confirmDeletePin?.let { pin ->
+        AlertDialog(
+            onDismissRequest = { confirmDeletePin = null },
+            title = { Text("Delete pin ${pin.name}?") },
+            text = { Text(ChartStyle.formatPosition(pin.latitude, pin.longitude)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        pins.onDelete(pin.id)
+                        tapped = null
+                        confirmDeletePin = null
+                    },
+                ) { Text("Delete", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = { TextButton(onClick = { confirmDeletePin = null }) { Text("Cancel") } },
+        )
+    }
 }
+
+/** What the last tap on the chart found; [pin] when it was a pin. */
+private data class Tapped(val text: String, val pin: Pin? = null)
 
 private fun hasLocationPermission(context: Context): Boolean =
     ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) ==
@@ -582,7 +657,12 @@ private fun phoneLocation(context: Context, allowed: Boolean): Location? {
 
 /** The layers button; tapping it opens the list of chart layers below it. */
 @Composable
-private fun LayersMenu(layer: ChartLayer, installed: (ChartLayer) -> Boolean, onPick: (ChartLayer) -> Unit) {
+private fun LayersMenu(
+    layer: ChartLayer,
+    installed: (ChartLayer) -> Boolean,
+    onPick: (ChartLayer) -> Unit,
+    pins: PinOverlay,
+) {
     var open by rememberSaveable { mutableStateOf(false) }
     Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Surface(
@@ -626,6 +706,24 @@ private fun LayersMenu(layer: ChartLayer, installed: (ChartLayer) -> Boolean, on
                             }
                         }
                     }
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .toggleable(value = pins.show, role = Role.Checkbox, onValueChange = pins.onShow)
+                            .padding(start = 4.dp, end = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Checkbox(checked = pins.show, onCheckedChange = null, modifier = Modifier.padding(10.dp))
+                        Text("Pins (${pins.library.pins.size})", style = MaterialTheme.typography.bodyMedium)
+                    }
+                    TextButton(
+                        onClick = {
+                            open = false
+                            pins.onImport()
+                        },
+                        modifier = Modifier.padding(start = 8.dp),
+                    ) { Text("Import GPX…") }
                 }
             }
         }

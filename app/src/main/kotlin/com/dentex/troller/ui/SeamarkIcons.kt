@@ -149,3 +149,36 @@ object SeamarkIcons {
         return bitmap
     }
 }
+
+/** The icon of a pin: an orange map pin whose tip marks the spot. */
+fun pinIcon(context: Context, color: String): Bitmap {
+    val metrics = context.resources.displayMetrics
+    val w = (22 * metrics.density).toInt()
+    val h = (30 * metrics.density).toInt()
+    val bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+    bitmap.density = metrics.densityDpi
+    val canvas = Canvas(bitmap)
+    val s = w.toFloat()
+    val r = s * 0.42f
+    val cx = s / 2
+    val cy = r + s * 0.06f
+    val body = Path().apply {
+        addCircle(cx, cy, r, Path.Direction.CW)
+        moveTo(cx - r * 0.72f, cy + r * 0.7f)
+        lineTo(cx, h - 1f)
+        lineTo(cx + r * 0.72f, cy + r * 0.7f)
+        close()
+    }
+    canvas.drawPath(body, Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        this.color = android.graphics.Color.parseColor(color)
+        style = Paint.Style.FILL
+    })
+    canvas.drawPath(body, Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        this.color = android.graphics.Color.WHITE
+        style = Paint.Style.STROKE
+        strokeWidth = s * 0.07f
+        strokeJoin = Paint.Join.ROUND
+    })
+    canvas.drawCircle(cx, cy, r * 0.38f, Paint(Paint.ANTI_ALIAS_FLAG).apply { this.color = android.graphics.Color.WHITE })
+    return bitmap
+}

@@ -1,5 +1,6 @@
 package com.dentex.troller.chart
 
+import com.dentex.troller.navigation.Pin
 import com.dentex.troller.navigation.SavedRoute
 import com.dentex.troller.navigation.Waypoint
 import org.junit.Assert.assertEquals
@@ -184,6 +185,19 @@ class ChartGeoJsonTest {
         assertTrue(json.contains("\"id\":\"b\""))
         assertTrue(json.contains("\"type\":\"Point\",\"coordinates\":[14.2000000,44.2000000]"))
         assertFalse(json.contains("\"id\":\"c\""))
+    }
+
+    @Test
+    fun pinsCarryTheirIdAndName() {
+        val json = ChartGeoJson.pins(listOf(Pin("p1", "fish", 44.067495, 14.859677, null)))
+        assertTrue(json.contains("\"id\":\"p1\",\"name\":\"fish\""))
+        assertTrue(json.contains("[14.8596770,44.0674950]"))
+        val style = ChartStyle.json("/charts/adriatic.pmtiles", night = false)
+        // Above the seamarks, below the routes.
+        val seamarks = style.indexOf("\"id\": \"${ChartStyle.LAYER_SEAMARK_ICON}\"")
+        val pins = style.indexOf("\"id\": \"${ChartStyle.LAYER_PIN}\"")
+        val route = style.indexOf("\"id\": \"route-line\"")
+        assertTrue(seamarks in 0 until pins && pins < route)
     }
 
     @Test
