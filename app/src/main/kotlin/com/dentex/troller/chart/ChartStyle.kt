@@ -68,6 +68,7 @@ object ChartStyle {
     const val SOURCE_BOAT = "boat"
     const val SOURCE_ROUTE_LINE = "route-line"
     const val SOURCE_ROUTE_POINTS = "route-points"
+    const val SOURCE_OTHER_ROUTES = "other-routes"
 
     const val LAYER_DEPTH_AREA = "depth-area"
     const val LAYER_RAINBOW = "depth-rainbow"
@@ -75,6 +76,9 @@ object ChartStyle {
     const val LAYER_SEAMARK_ICON = "seamark-icon"
     const val LAYER_LAND = "land"
     const val LAYER_BOAT_ARROW = "boat-arrow"
+    const val LAYER_ROUTE_POINTS = "route-points"
+    const val LAYER_OTHER_ROUTE_LINE = "other-route-line"
+    const val LAYER_OTHER_ROUTE_POINT = "other-route-point"
 
     /** Arrow image of each position source: "boat-arrow-motor" and "boat-arrow-phone". */
     fun boatImage(source: PositionSource): String = "boat-arrow-${source.property}"
@@ -92,6 +96,8 @@ object ChartStyle {
         val label: String,
         val labelHalo: String,
         val route: String,
+        val routeSelected: String,
+        val otherRoute: String,
         val boatMotor: String,
         val boatPhone: String,
         val boatStale: String,
@@ -106,6 +112,8 @@ object ChartStyle {
         label = "#2b5573",
         labelHalo = "#f8fbfd",
         route = "#b0412e",
+        routeSelected = "#f2b705",
+        otherRoute = "#7b6a92",
         boatMotor = "#2e9e44",
         boatPhone = "#5bb8f0",
         boatStale = "#8a8a8a",
@@ -120,6 +128,8 @@ object ChartStyle {
         label = "#9cc3dc",
         labelHalo = "#0c1f2d",
         route = "#e0745f",
+        routeSelected = "#ffd34d",
+        otherRoute = "#a99cc2",
         boatMotor = "#5fd17a",
         boatPhone = "#8dd0f7",
         boatStale = "#6b6b6b",
@@ -166,6 +176,7 @@ object ChartStyle {
             "$SOURCE_CHART": { "type": "vector", "url": ${quote("pmtiles://file://$chartPath")} },
             $rainbowSource
             "$SOURCE_BOAT": { "type": "geojson", "data": { "type": "FeatureCollection", "features": [] } },
+            "$SOURCE_OTHER_ROUTES": { "type": "geojson", "data": { "type": "FeatureCollection", "features": [] } },
             "$SOURCE_ROUTE_LINE": { "type": "geojson", "data": { "type": "FeatureCollection", "features": [] } },
             "$SOURCE_ROUTE_POINTS": { "type": "geojson", "data": { "type": "FeatureCollection", "features": [] } }
           },
@@ -211,11 +222,24 @@ object ChartStyle {
               "layout": { "text-field": ["get", "light"], "text-font": ["$FONT"], "text-size": 10,
                 "text-anchor": "left", "text-offset": [0.9, 0], "text-optional": true },
               "paint": { "text-color": "$LIGHT_LABEL", "text-halo-color": "${p.labelHalo}", "text-halo-width": 1.5 } },
+            { "id": "$LAYER_OTHER_ROUTE_LINE", "type": "line", "source": "$SOURCE_OTHER_ROUTES",
+              "filter": ["==", ["geometry-type"], "LineString"],
+              "layout": { "line-join": "round", "line-cap": "round" },
+              "paint": { "line-color": "${p.otherRoute}", "line-width": 2, "line-dasharray": [1, 1.5] } },
+            { "id": "$LAYER_OTHER_ROUTE_POINT", "type": "circle", "source": "$SOURCE_OTHER_ROUTES",
+              "filter": ["==", ["geometry-type"], "Point"],
+              "paint": { "circle-radius": 5, "circle-color": "${p.otherRoute}", "circle-stroke-color": "${p.labelHalo}", "circle-stroke-width": 1 } },
+            { "id": "other-route-name", "type": "symbol", "source": "$SOURCE_OTHER_ROUTES",
+              "filter": ["==", ["geometry-type"], "LineString"],
+              "layout": { "symbol-placement": "line", "text-field": ["get", "name"], "text-font": ["$FONT"], "text-size": 11 },
+              "paint": { "text-color": "${p.otherRoute}", "text-halo-color": "${p.labelHalo}", "text-halo-width": 1.5 } },
             { "id": "route-line", "type": "line", "source": "$SOURCE_ROUTE_LINE",
               "layout": { "line-join": "round", "line-cap": "round" },
               "paint": { "line-color": "${p.route}", "line-width": 2.5, "line-dasharray": [2, 1.5] } },
-            { "id": "route-points", "type": "circle", "source": "$SOURCE_ROUTE_POINTS",
-              "paint": { "circle-radius": 9, "circle-color": "${p.route}", "circle-stroke-color": "${p.labelHalo}", "circle-stroke-width": 1.5 } },
+            { "id": "$LAYER_ROUTE_POINTS", "type": "circle", "source": "$SOURCE_ROUTE_POINTS",
+              "paint": { "circle-radius": ["case", ["get", "selected"], 12, 9], "circle-color": "${p.route}",
+                "circle-stroke-color": ["case", ["get", "selected"], "${p.routeSelected}", "${p.labelHalo}"],
+                "circle-stroke-width": ["case", ["get", "selected"], 3.5, 1.5] } },
             { "id": "route-numbers", "type": "symbol", "source": "$SOURCE_ROUTE_POINTS",
               "layout": { "text-field": ["to-string", ["get", "number"]], "text-font": ["$FONT"], "text-size": 11,
                 "text-allow-overlap": true, "text-ignore-placement": true },

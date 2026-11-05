@@ -7,10 +7,13 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.Path
+import android.graphics.PointF
 import android.graphics.RectF
 import android.location.Location
 import android.location.LocationManager
 import android.os.SystemClock
+import android.view.MotionEvent
+import android.view.ViewConfiguration
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
@@ -81,8 +84,10 @@ import com.dentex.troller.chart.ChartStore
 import com.dentex.troller.chart.ChartStyle
 import com.dentex.troller.chart.PhoneFix
 import com.dentex.troller.chart.PositionSource
+import com.dentex.troller.chart.RouteHit
 import com.dentex.troller.haswing.MotorTelemetry
 import com.dentex.troller.navigation.MissionProgress
+import com.dentex.troller.navigation.RouteLibrary
 import com.dentex.troller.navigation.Waypoint
 import org.maplibre.android.camera.CameraPosition
 import org.maplibre.android.camera.CameraUpdateFactory
@@ -94,6 +99,7 @@ import org.maplibre.android.maps.Style
 import org.maplibre.android.style.sources.GeoJsonSource
 import org.maplibre.geojson.Point
 import kotlinx.coroutines.delay
+import kotlin.math.hypot
 
 /**
  * Offline depth chart with the boat position and the route being edited.
@@ -107,7 +113,7 @@ fun ChartScreen(viewModel: MainViewModel, onOpenConnect: () -> Unit) {
     val rainbowFile by viewModel.rainbowFile.collectAsStateWithLifecycle()
     val layer by viewModel.chartLayer.collectAsStateWithLifecycle()
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    val route by viewModel.routeDraft.collectAsStateWithLifecycle()
+    val routes by viewModel.routes.collectAsStateWithLifecycle()
     val importer = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let(viewModel::importChart)
     }
@@ -144,10 +150,35 @@ fun ChartScreen(viewModel: MainViewModel, onOpenConnect: () -> Unit) {
         },
         onOpenConnect = onOpenConnect,
         telemetry = state.telemetry,
-        route = route,
-        onLongPress = { if (editable) viewModel.addWaypoint(it) },
+        routes = routes,
+        routeActions = RouteActions(
+            editable = editable,
+            add = viewModel::addWaypoint,
+            removeLast = viewModel::removeLastWaypoint,
+            removeAt = viewModel::removeWaypoint,
+            insert = viewModel::insertWaypoint,
+            move = viewModel::moveWaypoint,
+            newRoute = viewModel::newRoute,
+            select = viewModel::selectRoute,
+            rename = viewModel::renameRoute,
+            delete = viewModel::deleteRoute,
+        ),
     )
 }
+
+/** What route mode may do. Waypoints can't change while a route is being uploaded. */
+internal class RouteActions(
+    val editable: Boolean,
+    val add: (Waypoint) -> Unit,
+    val removeLast: () -> Unit,
+    val removeAt: (Int) -> Unit,
+    val insert: (Int, Waypoint) -> Unit,
+    val move: (Int, Waypoint) -> Unit,
+    val newRoute: () -> Unit,
+    val select: (String?) -> Unit,
+    val rename: (String, String) -> Unit,
+    val delete: (String) -> Unit,
+)
 
 @Composable
 private fun ChartView(
@@ -160,8 +191,8 @@ private fun ChartView(
     link: LinkBadge,
     onOpenConnect: () -> Unit,
     telemetry: MotorTelemetry,
-    route: List<Waypoint>,
-    onLongPress: (Waypoint) -> Unit,
+    routes: RouteLibrary,
+    routeActions: RouteActions,
 ) {
     val context = LocalContext.current
     val night = isSystemInDarkTheme()
@@ -172,7 +203,22 @@ private fun ChartView(
     var style by remember { mutableStateOf<Style?>(null) }
     var follow by rememberSaveable { mutableStateOf(true) }
     var tapped by remember { mutableStateOf<String?>(null) }
-    val longPress by rememberUpdatedState(onLongPress)
+
+    // Route mode: taps edit routes instead of showing the depth.
+    var routeMode by rememberSaveable { mutableStateOf(false) }
+    var selectedWaypoint by remember { mutableStateOf<Int?>(null) }
+    val waypoints = routes.selected?.waypoints ?: emptyList()
+    LaunchedEffect(routes.selectedId) { selectedWaypoint = null }
+    val shownWaypoint = selectedWaypoint?.takeIf { routeMode && it < waypoints.size }
+    val currentRouteMode by rememberUpdatedState(routeMode)
+    val currentActions by rememberUpdatedState(routeActions)
+    val currentWaypoints by rememberUpdatedState(waypoints)
+    // Where the selected waypoint is while it is being dragged; saved when the finger lifts.
+    var dragged by remember { mutableStateOf<Waypoint?>(null) }
+    val shownWaypoints = dragged?.let { moving ->
+        shownWaypoint?.let { index -> waypoints.mapIndexed { i, old -> if (i == index) moving else old } }
+    } ?: waypoints
+    val currentShownWaypoint by rememberUpdatedState(shownWaypoint)
 
     var locationAllowed by remember { mutableStateOf(hasLocationPermission(context)) }
     val locationRequest = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
@@ -236,12 +282,35 @@ private fun ChartView(
             }
             m.addOnMapClickListener { point ->
                 val screen = m.projection.toScreenLocation(point)
-                // Seamarks are small, so they get a finger-sized box rather than a single point.
+                // Seamarks and waypoints are small, so they get a finger-sized box rather than a single point.
                 val reach = SEAMARK_TAP_DP * context.resources.displayMetrics.density
-                val mark = m.queryRenderedFeatures(
-                    RectF(screen.x - reach, screen.y - reach, screen.x + reach, screen.y + reach),
-                    ChartStyle.LAYER_SEAMARK_ICON, ChartStyle.LAYER_SEAMARK_DOT,
-                ).firstOrNull()
+                val box = RectF(screen.x - reach, screen.y - reach, screen.x + reach, screen.y + reach)
+                if (currentRouteMode) {
+                    // A waypoint of the selected route toggles its selection, a tap on its line
+                    // inserts a waypoint there, another route's line selects that route, and
+                    // anywhere else adds a waypoint at the end.
+                    val waypoint = m.queryRenderedFeatures(box, ChartStyle.LAYER_ROUTE_POINTS).firstOrNull()
+                    val onScreen = currentWaypoints.map { m.projection.toScreenLocation(LatLng(it.latitude, it.longitude)) }
+                    val segment = RouteHit.segment(onScreen.map { it.x to it.y }, screen.x, screen.y, reach)
+                    val other = m.queryRenderedFeatures(box, ChartStyle.LAYER_OTHER_ROUTE_POINT, ChartStyle.LAYER_OTHER_ROUTE_LINE)
+                        .firstOrNull()
+                    when {
+                        waypoint != null -> {
+                            val index = waypoint.getNumberProperty("index").toInt()
+                            selectedWaypoint = if (selectedWaypoint == index) null else index
+                        }
+                        segment != null && currentActions.editable -> {
+                            val at = m.projection.fromScreenLocation(PointF(segment.x, segment.y))
+                            currentActions.insert(segment.segment + 1, Waypoint(at.latitude, at.longitude))
+                            selectedWaypoint = segment.segment + 1
+                        }
+                        other != null -> currentActions.select(other.getStringProperty("id"))
+                        selectedWaypoint != null -> selectedWaypoint = null
+                        currentActions.editable -> currentActions.add(Waypoint(point.latitude, point.longitude))
+                    }
+                    return@addOnMapClickListener true
+                }
+                val mark = m.queryRenderedFeatures(box, ChartStyle.LAYER_SEAMARK_ICON, ChartStyle.LAYER_SEAMARK_DOT).firstOrNull()
                 if (mark != null) {
                     val at = (mark.geometry() as? Point)?.let { LatLng(it.latitude(), it.longitude()) } ?: point
                     val text = ChartStyle.describeSeamark(
@@ -264,9 +333,46 @@ private fun ChartView(
                 tapped = "$what\n${ChartStyle.formatPosition(point.latitude, point.longitude)}"
                 true
             }
-            m.addOnMapLongClickListener { point ->
-                longPress(Waypoint(point.latitude, point.longitude))
-                true
+            // In route mode, a press that starts on the selected waypoint drags it instead of
+            // panning the chart. Everything else goes to the map as usual.
+            val dragReach = DRAG_REACH_DP * context.resources.displayMetrics.density
+            val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
+            var downX = 0f
+            var downY = 0f
+            var moving = false
+            mapView.setOnTouchListener { _, event ->
+                val index = currentShownWaypoint
+                when (event.actionMasked) {
+                    MotionEvent.ACTION_DOWN -> {
+                        val start = index?.let { currentWaypoints.getOrNull(it) }
+                        if (!currentRouteMode || start == null || !currentActions.editable) return@setOnTouchListener false
+                        val at = m.projection.toScreenLocation(LatLng(start.latitude, start.longitude))
+                        if (hypot(event.x - at.x, event.y - at.y) > dragReach) return@setOnTouchListener false
+                        dragged = start
+                        downX = event.x
+                        downY = event.y
+                        moving = false
+                        true
+                    }
+                    MotionEvent.ACTION_MOVE -> {
+                        if (dragged == null) return@setOnTouchListener false
+                        if (!moving && hypot(event.x - downX, event.y - downY) < touchSlop) return@setOnTouchListener true
+                        moving = true
+                        val at = m.projection.fromScreenLocation(PointF(event.x, event.y))
+                        dragged = Waypoint(at.latitude, at.longitude)
+                        true
+                    }
+                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                        val moved = dragged ?: return@setOnTouchListener false
+                        dragged = null
+                        if (event.actionMasked == MotionEvent.ACTION_UP && index != null) {
+                            // A press that never moved is a tap: it deselects the waypoint, as elsewhere.
+                            if (moving) currentActions.move(index, moved) else selectedWaypoint = null
+                        }
+                        true
+                    }
+                    else -> dragged != null
+                }
             }
             map = m
         }
@@ -289,10 +395,16 @@ private fun ChartView(
     LaunchedEffect(style, position) {
         style?.getSourceAs<GeoJsonSource>(ChartStyle.SOURCE_BOAT)?.setGeoJson(ChartGeoJson.boat(position))
     }
-    LaunchedEffect(style, route) {
+    LaunchedEffect(style, shownWaypoints, shownWaypoint) {
         val loaded = style ?: return@LaunchedEffect
-        loaded.getSourceAs<GeoJsonSource>(ChartStyle.SOURCE_ROUTE_LINE)?.setGeoJson(ChartGeoJson.routeLine(route))
-        loaded.getSourceAs<GeoJsonSource>(ChartStyle.SOURCE_ROUTE_POINTS)?.setGeoJson(ChartGeoJson.routePoints(route))
+        loaded.getSourceAs<GeoJsonSource>(ChartStyle.SOURCE_ROUTE_LINE)?.setGeoJson(ChartGeoJson.routeLine(shownWaypoints))
+        loaded.getSourceAs<GeoJsonSource>(ChartStyle.SOURCE_ROUTE_POINTS)
+            ?.setGeoJson(ChartGeoJson.routePoints(shownWaypoints, shownWaypoint))
+    }
+    // The other routes only show in route mode, where they can be picked.
+    LaunchedEffect(style, routes, routeMode) {
+        val others = if (routeMode) routes.routes.filter { it.id != routes.selectedId } else emptyList()
+        style?.getSourceAs<GeoJsonSource>(ChartStyle.SOURCE_OTHER_ROUTES)?.setGeoJson(ChartGeoJson.otherRoutes(others))
     }
     LaunchedEffect(map, follow, latitude, longitude) {
         val m = map ?: return@LaunchedEffect
@@ -337,6 +449,13 @@ private fun ChartView(
                 installed = { it.needs == null || it.needs in installedKinds },
                 onPick = onPickLayer,
             )
+            RouteModeButton(
+                active = routeMode,
+                onClick = {
+                    routeMode = !routeMode
+                    selectedWaypoint = null
+                },
+            )
             if (rainbow != null) RainbowLegend()
             if (!locationAllowed) {
                 FilterChip(
@@ -350,26 +469,39 @@ private fun ChartView(
             }
         }
 
-        Surface(
-            modifier = Modifier.align(Alignment.BottomStart).padding(8.dp).widthIn(max = 260.dp),
-            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
-            shape = MaterialTheme.shapes.small,
-            tonalElevation = 2.dp,
+        Column(
+            modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Text(
-                text = tapped ?: "Tap for the depth or a seamark. Long-press to add a waypoint.",
-                style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-            )
-        }
-
-        if (hasPosition && !follow) {
-            ExtendedFloatingActionButton(
-                onClick = { follow = true },
-                icon = { Icon(Icons.Default.LocationOn, contentDescription = null) },
-                text = { Text("Follow boat") },
-                modifier = Modifier.align(Alignment.BottomEnd).padding(12.dp),
-            )
+            if (hasPosition && !follow) {
+                ExtendedFloatingActionButton(
+                    onClick = { follow = true },
+                    icon = { Icon(Icons.Default.LocationOn, contentDescription = null) },
+                    text = { Text("Follow boat") },
+                    modifier = Modifier.align(Alignment.End),
+                )
+            }
+            if (routeMode) {
+                RoutePanel(
+                    routes = routes,
+                    selectedWaypoint = shownWaypoint,
+                    actions = routeActions,
+                    onDeselectWaypoint = { selectedWaypoint = null },
+                )
+            } else {
+                Surface(
+                    modifier = Modifier.widthIn(max = 260.dp),
+                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
+                    shape = MaterialTheme.shapes.small,
+                    tonalElevation = 2.dp,
+                ) {
+                    Text(
+                        text = tapped ?: "Tap for the depth or a seamark.",
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                    )
+                }
+            }
         }
     }
 }
@@ -639,6 +771,7 @@ private const val MIN_COURSE_SPEED_MPS = 0.5f
 private const val BOAT_ICON_DP = 30f
 private const val LEGEND_MAX_DEPTH = 500
 private const val SEAMARK_TAP_DP = 16f
+private const val DRAG_REACH_DP = 28f
 
 /** What the corner badge of the chart offers, following the state of the link to the motor. */
 private enum class LinkBadge { STOP, RECONNECTING, NO_CONNECTION }

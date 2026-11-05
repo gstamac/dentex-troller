@@ -41,6 +41,7 @@ fun RouteScreen(viewModel: MainViewModel) {
     val progress = state.missionProgress
     var showAddDialog by remember { mutableStateOf(false) }
     val waypoints by viewModel.routeDraft.collectAsStateWithLifecycle()
+    val routes by viewModel.routes.collectAsStateWithLifecycle()
     val editable = progress.phase != MissionProgress.Phase.UPLOADING
 
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
@@ -85,7 +86,7 @@ fun RouteScreen(viewModel: MainViewModel) {
             }
         }
 
-        SectionHeader("Waypoints")
+        SectionHeader("Waypoints of ${routes.selected?.name ?: "a new route"}")
         if (waypoints.isNotEmpty()) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 TextButton(onClick = { viewModel.removeLastWaypoint() }, enabled = editable) { Text("Remove last") }
@@ -95,7 +96,7 @@ fun RouteScreen(viewModel: MainViewModel) {
         if (waypoints.isEmpty()) {
             Text(
                 text = "No waypoint yet. Add one with a latitude and a longitude in decimal degrees, " +
-                    "or long-press a spot on the chart.",
+                    "or switch on route mode on the chart and tap it.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -122,6 +123,9 @@ fun RouteScreen(viewModel: MainViewModel) {
                 text = "${route.size} waypoint(s)",
                 style = MaterialTheme.typography.bodyMedium,
             )
+            if (!route.isEmpty) {
+                TextButton(onClick = { viewModel.saveDownloadedRoute() }) { Text("Save to the phone as a new route") }
+            }
         }
     }
 

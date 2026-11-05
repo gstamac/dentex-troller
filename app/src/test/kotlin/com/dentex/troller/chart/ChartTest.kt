@@ -1,5 +1,6 @@
 package com.dentex.troller.chart
 
+import com.dentex.troller.navigation.SavedRoute
 import com.dentex.troller.navigation.Waypoint
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -150,6 +151,67 @@ class ChartGeoJsonTest {
         assertEquals("boat-arrow-motor", ChartStyle.boatImage(PositionSource.MOTOR))
         assertEquals("boat-arrow-phone", ChartStyle.boatImage(PositionSource.PHONE))
     }
+
+    @Test
+    fun theRouteIsNumberedFromOne() {
+        val route = listOf(Waypoint(44.0, 14.0), Waypoint(44.1, 14.1))
+        val points = ChartGeoJson.routePoints(route)
+        assertTrue(points.contains("\"number\":1"))
+        assertTrue(points.contains("\"number\":2"))
+        assertTrue(ChartGeoJson.routeLine(route).contains("[14.0000000,44.0000000],[14.1000000,44.1000000]"))
+    }
+
+    @Test
+    fun everyWaypointSaysWhetherItIsSelected() {
+        val points = ChartGeoJson.routePoints(listOf(Waypoint(44.0, 14.0), Waypoint(44.1, 14.1)), selectedIndex = 1)
+        assertTrue(points.contains("\"index\":0,\"number\":1,\"selected\":false"))
+        assertTrue(points.contains("\"index\":1,\"number\":2,\"selected\":true"))
+    }
+
+    @Test
+    fun otherRoutesHaveALineAndAPointPerWaypoint() {
+        val json = ChartGeoJson.otherRoutes(
+            listOf(
+                SavedRoute("a", "Rt \"Kremik\"", listOf(Waypoint(44.0, 14.0), Waypoint(44.1, 14.1)), 0),
+                SavedRoute("b", "One", listOf(Waypoint(44.2, 14.2)), 0),
+                SavedRoute("c", "Empty", emptyList(), 0),
+            ),
+        )
+        assertTrue(json.contains("\"id\":\"a\",\"name\":\"Rt \\\"Kremik\\\"\""))
+        assertEquals(1, Regex("\"LineString\"").findAll(json).count())
+        // Two points for route a, one for route b.
+        assertEquals(3, Regex("\"Point\"").findAll(json).count())
+        assertTrue(json.contains("\"id\":\"b\""))
+        assertTrue(json.contains("\"type\":\"Point\",\"coordinates\":[14.2000000,44.2000000]"))
+        assertFalse(json.contains("\"id\":\"c\""))
+    }
+
+    @Test
+    fun aSingleWaypointDrawsNoLine() {
+        assertTrue(ChartGeoJson.routeLine(listOf(Waypoint(44.0, 14.0))).contains("\"features\":[]"))
+    }
+}
+
+class RouteHitTest {
+
+    private val zigzag = listOf(0f to 0f, 100f to 0f, 100f to 100f)
+
+    @Test
+    fun aTapNearASegmentLandsOnIt() {
+        val hit = RouteHit.segment(zigzag, 40f, 8f, reach = 20f)!!
+        assertEquals(0, hit.segment)
+        assertEquals(40f, hit.x, 0.01f)
+        assertEquals(0f, hit.y, 0.01f)
+        assertEquals(1, RouteHit.segment(zigzag, 92f, 60f, reach = 20f)!!.segment)
+    }
+
+    @Test
+    fun theClosestSegmentWinsAndFarTapsMiss() {
+        // Near the corner, 3 px from the second segment and 5 px from the first.
+        assertEquals(1, RouteHit.segment(zigzag, 97f, 5f, reach = 20f)!!.segment)
+        assertNull(RouteHit.segment(zigzag, 50f, 50f, reach = 20f))
+        assertNull(RouteHit.segment(listOf(0f to 0f), 0f, 0f, reach = 20f))
+    }
 }
 
 class BoatPositionTest {
@@ -200,19 +262,5 @@ class BoatPositionTest {
     @Test
     fun noFixAtAllDrawsNothing() {
         assertNull(choose(motorFresh = true, phone = null, phoneFresh = false, motor = false))
-    }
-
-    @Test
-    fun theRouteIsNumberedFromOne() {
-        val route = listOf(Waypoint(44.0, 14.0), Waypoint(44.1, 14.1))
-        val points = ChartGeoJson.routePoints(route)
-        assertTrue(points.contains("\"number\":1"))
-        assertTrue(points.contains("\"number\":2"))
-        assertTrue(ChartGeoJson.routeLine(route).contains("[14.0000000,44.0000000],[14.1000000,44.1000000]"))
-    }
-
-    @Test
-    fun aSingleWaypointDrawsNoLine() {
-        assertTrue(ChartGeoJson.routeLine(listOf(Waypoint(44.0, 14.0))).contains("\"features\":[]"))
     }
 }

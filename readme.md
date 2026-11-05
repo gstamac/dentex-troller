@@ -84,7 +84,7 @@ AGP 9 compiles the Kotlin sources of the Android modules with its built-in Kotli
 adb pair 192.168.88.101:33977
 ```
 ```bash
-adb connect 192.168.88.101:42165
+adb connect 192.168.88.101:33229
 ```
 
 ```bash
@@ -142,7 +142,7 @@ within range before it answers.
 2. **Dashboard** — shows the motor profile, the telemetry and the age of the last update. The
    profile is only reported after a heartbeat with a valid checksum was received.
 3. **Chart** — an offline depth chart of the Adriatic with the boat position and heading from the
-   motor telemetry. Tap the chart for the depth or a seamark, long-press to add a waypoint to the route. The
+   motor telemetry. Tap the chart for the depth or a seamark. The **route** button under the layers button switches route mode: tap the chart to add a waypoint, tap the line between two waypoints to insert one there, tap a waypoint to select it, then drag it to move it or delete it, and tap another route to select it; **Routes** lists every saved route to pick, rename or delete, and **New route** starts one. Routes are saved on the phone automatically. The
    **layers** button under the STOP sign picks the chart layer: Default or Rainbow depths. The boat is green when
    the position comes from the motor and light blue when the motor has no recent fix and the
    phone's own GPS is used instead (**Use phone GPS** asks for the permission); it turns grey when
@@ -150,7 +150,7 @@ within range before it answers.
    anything to the motor. It needs the chart file, see [Offline chart](#offline-chart).
 4. **Controls** — propulsion commands stay disabled until a type 110 motor was confirmed. The stop
    command is always available: a STOP button at the top of every screen, and a STOP sign on the chart. While the Bluetooth link is down the chart shows a "no connection" badge instead, which opens the connect screen. Switching to a mode asks for a confirmation.
-5. **Route** — uploads and downloads waypoints. Uploading a route never starts the motor.
+5. **Route** — uploads the selected route to the motor and downloads the one stored on it, which can be saved as a new route. Uploading a route never starts the motor.
 6. **Log** — shows the raw traffic in both directions and exports it as text so that it can be
    compared with a capture from the Helmsman application. Every device seen during a scan is
    logged there as well, with its name, address, signal strength and advertised services.

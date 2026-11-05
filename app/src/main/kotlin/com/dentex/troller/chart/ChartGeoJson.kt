@@ -1,5 +1,6 @@
 package com.dentex.troller.chart
 
+import com.dentex.troller.navigation.SavedRoute
 import com.dentex.troller.navigation.Waypoint
 import java.util.Locale
 
@@ -28,13 +29,47 @@ object ChartGeoJson {
             """"geometry":{"type":"LineString","coordinates":[$coordinates]}}]}"""
     }
 
-    /** The waypoints, numbered from 1 like the route screen. */
-    fun routePoints(waypoints: List<Waypoint>): String {
+    /** The waypoints, numbered from 1 like the route screen. [selectedIndex] is drawn highlighted. */
+    fun routePoints(waypoints: List<Waypoint>, selectedIndex: Int? = null): String {
         val features = waypoints.mapIndexed { index, waypoint ->
-            """{"type":"Feature","properties":{"number":${index + 1}},""" +
+            """{"type":"Feature","properties":{"index":$index,"number":${index + 1},"selected":${index == selectedIndex}},""" +
                 """"geometry":${point(waypoint.latitude, waypoint.longitude)}}"""
         }
         return """{"type":"FeatureCollection","features":[${features.joinToString(",")}]}"""
+    }
+
+    /**
+     * The routes that are not selected: a line each (from two waypoints) and a point for every
+     * waypoint. Each feature carries the route id, so a tap can select it, and the line carries
+     * the name for the label along it.
+     */
+    fun otherRoutes(routes: List<SavedRoute>): String {
+        val features = routes.flatMap { route ->
+            val properties = """{"id":${quote(route.id)},"name":${quote(route.name)}}"""
+            val line = if (route.waypoints.size < 2) {
+                emptyList()
+            } else {
+                val coordinates = route.waypoints.joinToString(",") { coordinate(it.latitude, it.longitude) }
+                listOf("""{"type":"Feature","properties":$properties,"geometry":{"type":"LineString","coordinates":[$coordinates]}}""")
+            }
+            line + route.waypoints.map {
+                """{"type":"Feature","properties":{"id":${quote(route.id)}},"geometry":${point(it.latitude, it.longitude)}}"""
+            }
+        }
+        return """{"type":"FeatureCollection","features":[${features.joinToString(",")}]}"""
+    }
+
+    private fun quote(text: String): String = buildString {
+        append('"')
+        text.forEach { c ->
+            when {
+                c == '"' -> append("\\\"")
+                c == '\\' -> append("\\\\")
+                c < ' ' -> append(String.format(Locale.US, "\\u%04x", c.code))
+                else -> append(c)
+            }
+        }
+        append('"')
     }
 
     private fun point(latitude: Double, longitude: Double): String =

@@ -27,8 +27,11 @@ import com.dentex.troller.mavlink.MavlinkMessage
 import com.dentex.troller.navigation.MissionProgress
 import com.dentex.troller.navigation.MissionTransfer
 import com.dentex.troller.navigation.Route
+import com.dentex.troller.navigation.RouteLibrary
+import com.dentex.troller.navigation.SavedRoute
 import com.dentex.troller.navigation.Waypoint
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -41,9 +44,11 @@ import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.sample
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.updateAndGet
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import java.util.Locale
+import java.util.UUID
 
 /** State rendered by the UI. */
 data class MainUiState(
@@ -130,14 +135,23 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     /** The layer picked in the chart's layers menu. Kept across restarts. */
     val chartLayer: StateFlow<ChartLayer> = _chartLayer.asStateFlow()
 
-    private val _routeDraft = MutableStateFlow<List<Waypoint>>(emptyList())
+    private val routeStore = RouteStore(application)
+
+    // One writer at a time, in order, so an older library never overwrites a newer one.
+    private val routeSaving = Dispatchers.IO.limitedParallelism(1)
+    private val _routes = MutableStateFlow(routeStore.load())
+
+    /** Every route kept on the phone and the selected one. Saved after every change. */
+    val routes: StateFlow<RouteLibrary> = _routes.asStateFlow()
 
     /**
-     * The route being edited, shared by the route screen and the chart.
+     * The waypoints of the selected route, shared by the route screen and the chart.
      *
      * Editing it never talks to the motor; only [uploadRoute] does.
      */
-    val routeDraft: StateFlow<List<Waypoint>> = _routeDraft.asStateFlow()
+    val routeDraft: StateFlow<List<Waypoint>> = _routes
+        .map { it.selected?.waypoints ?: emptyList() }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, _routes.value.selected?.waypoints ?: emptyList())
 
     private var scanJob: Job? = null
 
@@ -428,20 +442,81 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    /** Appends a waypoint to the route being edited. */
+    /** Appends a waypoint to the selected route, starting a new route when none is selected. */
     fun addWaypoint(waypoint: Waypoint) {
-        _routeDraft.update { it + waypoint }
+        editRoutes { library ->
+            val target = if (library.selected == null) library.create(newRouteId(), System.currentTimeMillis()) else library
+            target.editSelected { it + waypoint }
+        }
     }
 
-    /** Removes the last waypoint of the route being edited. */
+    /** Removes the last waypoint of the selected route. */
     fun removeLastWaypoint() {
-        _routeDraft.update { it.dropLast(1) }
+        editRoutes { library -> library.editSelected { it.dropLast(1) } }
     }
 
-    /** Clears the route being edited. */
-    fun clearRoute() {
-        _routeDraft.value = emptyList()
+    /** Inserts a waypoint into the selected route so that it becomes number [index] + 1. */
+    fun insertWaypoint(index: Int, waypoint: Waypoint) {
+        editRoutes { library ->
+            library.editSelected { points -> points.toMutableList().apply { add(index.coerceIn(0, size), waypoint) } }
+        }
     }
+
+    /** Moves one waypoint of the selected route. */
+    fun moveWaypoint(index: Int, waypoint: Waypoint) {
+        editRoutes { library ->
+            library.editSelected { points -> points.mapIndexed { i, old -> if (i == index) waypoint else old } }
+        }
+    }
+
+    /** Removes one waypoint of the selected route. */
+    fun removeWaypoint(index: Int) {
+        editRoutes { library -> library.editSelected { points -> points.filterIndexed { i, _ -> i != index } } }
+    }
+
+    /** Clears the selected route's waypoints. */
+    fun clearRoute() {
+        editRoutes { library -> library.editSelected { emptyList() } }
+    }
+
+    /** Starts a new, empty route and selects it. */
+    fun newRoute() {
+        editRoutes { library -> library.create(newRouteId(), System.currentTimeMillis()) }
+    }
+
+    fun selectRoute(id: String?) {
+        editRoutes { library -> library.select(id) }
+    }
+
+    fun renameRoute(id: String, name: String) {
+        editRoutes { library -> library.rename(id, name) }
+    }
+
+    fun deleteRoute(id: String) {
+        editRoutes { library -> library.delete(id) }
+    }
+
+    /** Keeps the route last read from the motor as a new route on the phone. */
+    fun saveDownloadedRoute() {
+        val route = _uiState.value.downloadedRoute ?: return
+        val now = System.currentTimeMillis()
+        val name = "From motor " + java.text.SimpleDateFormat("d MMM HH:mm", Locale.getDefault()).format(java.util.Date(now))
+        editRoutes { library -> library.add(SavedRoute(newRouteId(), name, route.waypoints, now)) }
+        notifyUser("Saved as \"$name\"")
+    }
+
+    private fun editRoutes(change: (RouteLibrary) -> RouteLibrary) {
+        val updated = _routes.updateAndGet(change)
+        viewModelScope.launch(routeSaving) {
+            try {
+                routeStore.save(updated)
+            } catch (error: Exception) {
+                notifyUser("The routes could not be saved: ${error.message}")
+            }
+        }
+    }
+
+    private fun newRouteId(): String = UUID.randomUUID().toString()
 
     /** Looks for the chart files again, for example after they were copied with adb. */
     fun refreshChart() {
