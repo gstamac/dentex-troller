@@ -21,4 +21,4 @@ Persistent project memory lives in [.memory/](.memory/), which is versioned with
 - Safety first: a motor command can move the boat. Never weaken the command gate, never replay
   commands after a reconnect, and keep STOP always available.
 - Run `.\gradlew.bat test` with JDK 17 (see [.memory/dev-environment.md](.memory/dev-environment.md))
-  after changes to `mavlink`, `haswing`, `navigation`, `logging` or `ble`.
+  after changes to `mavlink`, `haswing`, `navigation`, `logging`, `simulator` or `ble`.

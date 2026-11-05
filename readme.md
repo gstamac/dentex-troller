@@ -23,6 +23,7 @@ The code is split into modules so that the protocol layers stay testable on the 
 | `haswing` | `com.dentex.troller.haswing` | Motor profiles, commands, telemetry decoding |
 | `navigation` | `com.dentex.troller.navigation` | Route model and the mission transfer state machine |
 | `logging` | `com.dentex.troller.logging` | Bounded diagnostic log, hex dump, redaction |
+| `simulator` | `com.dentex.troller.simulator` | Simulated remote and motor for the `sim` build |
 | `app` | `com.dentex.troller` | Compose UI, permissions, lifecycle, view model |
 
 ### Protocol facts
@@ -84,7 +85,7 @@ AGP 9 compiles the Kotlin sources of the Android modules with its built-in Kotli
 adb pair 192.168.88.101:33977
 ```
 ```bash
-adb connect 192.168.88.101:42071
+adb connect 192.168.88.101:42441
 ```
 
 ```bash
@@ -100,7 +101,7 @@ adb disconnect
 adb -s $device install 'C:\Work\github\dentex-troller\app\build\outputs\apk\debug\app-debug.apk'
 ```
 ```bash
-adb -s $device install 'C:\Work\github\dentex-troller\app\build\outputs\apk\fakeGps\app-fakeGps.apk'
+adb -s $device install 'C:\Work\github\dentex-troller\app\build\outputs\apk\sim\app-sim.apk'
 ```
 ```bash
 Get-ChildItem -Path 'tools/charts/build' -File | ForEach-Object { adb -s $device push $_.FullName "/sdcard/Android/data/com.dentex.troller/files/charts/" }
@@ -111,6 +112,41 @@ adb -s $device push tools/charts/build/adriatic.pmtiles /sdcard/Android/data/com
 ```bash
 adb -s $device push tools/charts/build/adriatic-rainbow.pmtiles /sdcard/Android/data/com.dentex.troller/files/charts/adriatic-rainbow.pmtiles
 ```
+
+## Simulator build
+
+The `sim` build (`./gradlew :app:assembleSim`) replaces Bluetooth with a simulated remote and
+motor, for testing on land. It cannot reach the real remote, so no command can move the boat, and
+the chart shows a **SIMULATOR** badge. It installs over the debug app and keeps its charts, routes
+and pins; it remembers its simulated remote apart from the real one.
+
+The simulator (module `simulator`) talks MAVLink bytes, so the app's decoding, command gate,
+watchdog, route upload and go-to run as on the water. It sends the motor's telemetry once a
+second and follows what was seen on the motor: navigation steers to the stored route at the last
+speed (at speed 0 it only turns), manual mode leaves the propeller running, STOP stops it, and
+anchor mode holds the spot. Without a GPS fix it refuses navigation and anchor mode. The boat
+starts at the test position 44.216687, 14.793422.
+
+The **Log** screen has buttons for the common cases. Everything can also be set with adb:
+
+```bash
+adb shell am broadcast -a com.dentex.troller.SIM --es cmd status
+adb shell am broadcast -a com.dentex.troller.SIM --es cmd position --es value "44.2167,14.7934"
+adb shell am broadcast -a com.dentex.troller.SIM --es cmd heading --es value 90
+adb shell am broadcast -a com.dentex.troller.SIM --es cmd gps --es value nofix         # or fix
+adb shell am broadcast -a com.dentex.troller.SIM --es cmd arrival --es value manual    # anchor, manual or circle
+adb shell am broadcast -a com.dentex.troller.SIM --es cmd current --es value "0.5,90"  # knots, flowing towards
+adb shell am broadcast -a com.dentex.troller.SIM --es cmd timescale --es value 10      # simulated seconds per second
+adb shell am broadcast -a com.dentex.troller.SIM --es cmd fail --es value navigation   # none, upload, navigation or anchor
+adb shell am broadcast -a com.dentex.troller.SIM --es cmd battery --es value 20
+adb shell am broadcast -a com.dentex.troller.SIM --es cmd link --es value "drop,8"     # motor silent, the watchdog fires
+adb shell am broadcast -a com.dentex.troller.SIM --es cmd link --es value "lose,15"    # remote out of range, then reconnect
+adb shell am broadcast -a com.dentex.troller.SIM --es cmd reset
+```
+
+Each command prints the simulator state in the `data=` of the broadcast result and logs it on
+the Log screen. The model is only as good as what is known about the motor: confirm anything new
+on the water and update the simulator when the motor behaves differently.
 
 ## Verification
 

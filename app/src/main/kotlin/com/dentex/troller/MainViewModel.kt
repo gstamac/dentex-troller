@@ -4,10 +4,8 @@ import android.app.Application
 import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.dentex.troller.ble.AndroidBleTransport
 import com.dentex.troller.ble.BleEvent
 import com.dentex.troller.ble.BleScanResult
-import com.dentex.troller.ble.BleScanner
 import com.dentex.troller.ble.ConnectionState
 import com.dentex.troller.chart.ChartKind
 import com.dentex.troller.chart.ChartLayer
@@ -86,8 +84,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     /** Diagnostic log; also used to build the export that can be compared with Helmsman. */
     val log: DiagnosticLog = DiagnosticLog()
 
-    private val transport = AndroidBleTransport(application, log, viewModelScope)
-    private val scanner = BleScanner(application)
+    // Bluetooth, or in the sim build a simulated remote and motor.
+    private val link = Links.create(application, log, viewModelScope)
+    private val transport = link.transport
+    private val scanner = link.scanner
+
+    /** The simulated motor in the sim build, null otherwise. */
+    val simulator: SimulatorControls? = link.simulator
     private val decoder = HelmsmanMavlinkCodec()
 
     /** Motor controller; exposes the identity, the telemetry and the command gate. */
@@ -199,7 +202,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private var scanJob: Job? = null
 
     private val connectionSettings =
-        application.getSharedPreferences(CONNECTION_SETTINGS, android.content.Context.MODE_PRIVATE)
+        // The sim build remembers its simulated remote separately, so the real one is kept.
+        application.getSharedPreferences(
+            if (BuildConfig.SIMULATOR) "$CONNECTION_SETTINGS-sim" else CONNECTION_SETTINGS,
+            android.content.Context.MODE_PRIVATE,
+        )
     private var autoConnectTarget: String? = null
     private var autoConnectFound = false
     private var reconnectJob: Job? = null

@@ -31,6 +31,10 @@ only STOP (11) stopped it. So the go-to now sends one Speed up when the speed is
 Manual then STOP. Still unknown: what the motor does on reaching the target (the app stops it
 unless it reports Anchor).
 
+The `simulator` module (sim build, 2026-11-05) models these observations. When a field test
+shows different motor behaviour, change `SimulatedMotor` and its tests to match, so land tests stay
+honest.
+
 **Why:** the motor behaviour is inferred from the decompiled app ([[helmsman-source-as-reference]]),
 not from captured traffic.
 **How to apply:** when the owner reports a field test, update this list. Remove the items that

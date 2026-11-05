@@ -42,6 +42,7 @@ fun DiagnosticsScreen(viewModel: MainViewModel) {
     var showExport by remember { mutableStateOf(false) }
 
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+        viewModel.simulator?.let { SimulatorPanel(it) }
         Text(
             text = "${entries.size} retained records. Export the log to compare the wire format " +
                 "with a Helmsman capture.",

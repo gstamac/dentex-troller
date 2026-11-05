@@ -539,17 +539,32 @@ private fun ChartView(
     Box(modifier = Modifier.fillMaxSize()) {
         AndroidView(factory = { mapView }, modifier = Modifier.fillMaxSize())
 
-        Surface(
+        Column(
             modifier = Modifier.align(Alignment.TopStart).padding(8.dp).widthIn(max = 230.dp),
-            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
-            shape = MaterialTheme.shapes.small,
+            verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            Text(
-                text = "EMODnet Bathymetry · © OpenStreetMap, OpenSeaMap",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-            )
+            Surface(
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
+                shape = MaterialTheme.shapes.small,
+            ) {
+                Text(
+                    text = "EMODnet Bathymetry · © OpenStreetMap, OpenSeaMap",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                )
+            }
+            // The sim build's motor is simulated; this must never be mistaken for a real session.
+            if (BuildConfig.SIMULATOR) {
+                Surface(color = MaterialTheme.colorScheme.tertiary, shape = MaterialTheme.shapes.small) {
+                    Text(
+                        text = "SIMULATOR",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onTertiary,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                    )
+                }
+            }
         }
 
         Column(
@@ -673,31 +688,9 @@ private fun hasLocationPermission(context: Context): Boolean =
     ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) ==
         PackageManager.PERMISSION_GRANTED
 
-/** The fixed position of the fakeGps build, renewed every second so it never turns stale. */
-@Composable
-private fun fakePhoneLocation(position: String): Location {
-    val (latitude, longitude) = position.split(",").map { it.trim().toDouble() }
-    val location by produceState(fakeFix(latitude, longitude)) {
-        while (true) {
-            delay(PHONE_UPDATE_MILLIS)
-            value = fakeFix(latitude, longitude)
-        }
-    }
-    return location
-}
-
-private fun fakeFix(latitude: Double, longitude: Double) = Location(LocationManager.GPS_PROVIDER).apply {
-    this.latitude = latitude
-    this.longitude = longitude
-    accuracy = 5f
-    time = System.currentTimeMillis()
-    elapsedRealtimeNanos = SystemClock.elapsedRealtimeNanos()
-}
-
 /** The phone's latest GPS fix while the chart is on screen, or null without one. */
 @Composable
 private fun phoneLocation(context: Context, allowed: Boolean): Location? {
-    BuildConfig.FAKE_PHONE_LOCATION?.let { return fakePhoneLocation(it) }
     var location by remember { mutableStateOf<Location?>(null) }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     DisposableEffect(allowed, lifecycle) {

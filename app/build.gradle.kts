@@ -13,8 +13,8 @@ android {
         targetSdk = 36
         versionCode = 1
         versionName = "0.1.0"
-        // "latitude,longitude" makes the phone GPS report only this position; set by the fakeGps build.
-        buildConfigField("String", "FAKE_PHONE_LOCATION", "null")
+        // True in the sim build, whose remote and motor are simulated.
+        buildConfigField("boolean", "SIMULATOR", "false")
     }
 
     buildTypes {
@@ -22,12 +22,19 @@ android {
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
-        // For testing on land: the phone GPS always reports one position. Installs over the debug app.
-        create("fakeGps") {
+        // For testing without the motor: a simulated remote and motor replace Bluetooth, so this
+        // build cannot reach a real remote. Controlled with adb, see the readme. Installs over the debug app.
+        create("sim") {
             initWith(getByName("debug"))
             matchingFallbacks += "debug"
-            buildConfigField("String", "FAKE_PHONE_LOCATION", "\"44.216686739950376,14.793421749585923\"")
+            buildConfigField("boolean", "SIMULATOR", "true")
         }
+    }
+
+    // The link factory: the real one in src/real, the simulated one in src/sim (sim build only).
+    sourceSets {
+        getByName("debug").kotlin.directories += "src/real/kotlin"
+        getByName("release").kotlin.directories += "src/real/kotlin"
     }
 
     compileOptions {
@@ -53,6 +60,7 @@ dependencies {
     implementation(project(":logging"))
     implementation(project(":mavlink"))
     implementation(project(":navigation"))
+    "simImplementation"(project(":simulator"))
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)

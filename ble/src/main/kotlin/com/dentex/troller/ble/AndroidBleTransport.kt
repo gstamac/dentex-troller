@@ -114,7 +114,7 @@ class AndroidBleTransport(
      *
      * Safe to call from `onCleared`, where no coroutine can be launched any more.
      */
-    fun release() {
+    override fun release() {
         writerJob?.cancel()
         writerJob = null
         closeLink()

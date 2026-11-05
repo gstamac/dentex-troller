@@ -25,12 +25,12 @@ import kotlinx.coroutines.flow.merge
  * filter and lists everything that answers. The filter is only offered as an optional convenience
  * and is off by default.
  */
-class BleScanner(private val context: Context) {
+class BleScanner(private val context: Context) : DeviceScanner {
 
     private val adapter: BluetoothAdapter?
         get() = (context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager)?.adapter
 
-    val isBluetoothEnabled: Boolean get() = adapter?.isEnabled == true
+    override val isBluetoothEnabled: Boolean get() = adapter?.isEnabled == true
 
     /**
      * Emits every advertisement seen while the flow is collected.
@@ -44,7 +44,7 @@ class BleScanner(private val context: Context) {
      *   Only use this when the peer is known to advertise it, otherwise the peer is invisible.
      */
     @SuppressLint("MissingPermission")
-    fun scan(filterByService: Boolean = false): Flow<BleScanResult> {
+    override fun scan(filterByService: Boolean): Flow<BleScanResult> {
         val scanner: BluetoothLeScanner? = adapter?.bluetoothLeScanner
         val modern = if (scanner == null) {
             flowOf()

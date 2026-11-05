@@ -32,6 +32,9 @@ interface BleTransport {
 
     /** Disconnects and releases the GATT resources. */
     suspend fun disconnect()
+
+    /** Releases the link without suspending, for `onCleared`. */
+    fun release() {}
 }
 
 /** State of the BLE link. */
