@@ -1,9 +1,9 @@
 package com.dentex.troller.chart
 
 /** Where the position shown on the chart came from. */
-enum class PositionSource(val property: String, val label: String) {
-    MOTOR("motor", "Motor GPS"),
-    PHONE("phone", "Phone GPS"),
+enum class PositionSource(val property: String) {
+    MOTOR("motor"),
+    PHONE("phone"),
 }
 
 /** A position from the phone's own GPS. [bearingDegrees] is the course, only known while moving. */

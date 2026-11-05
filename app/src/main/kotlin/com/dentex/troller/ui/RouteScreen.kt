@@ -44,8 +44,6 @@ fun RouteScreen(viewModel: MainViewModel) {
     val editable = progress.phase != MissionProgress.Phase.UPLOADING
 
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-        Text("Route", style = MaterialTheme.typography.headlineSmall)
-
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
             Button(
                 onClick = { showAddDialog = true },

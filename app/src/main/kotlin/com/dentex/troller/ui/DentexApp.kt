@@ -1,6 +1,8 @@
 package com.dentex.troller.ui
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
@@ -10,17 +12,13 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Warning
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -28,6 +26,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -48,10 +47,9 @@ private enum class Destination(
 /**
  * Root composable.
  *
- * A single activity with a bottom navigation bar. The emergency stop is always reachable from the
- * top bar, no matter which screen is open.
+ * A single activity with a bottom navigation bar. The emergency stop is on every screen: a STOP
+ * button at the top, or a STOP sign on the chart.
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DentexApp(viewModel: MainViewModel = viewModel()) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -65,33 +63,6 @@ fun DentexApp(viewModel: MainViewModel = viewModel()) {
     }
 
     Scaffold(
-        topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        text = when (destination) {
-                            Destination.CONNECT -> "Dentex Troller"
-                            Destination.DASHBOARD -> "Dashboard"
-                            Destination.CHART -> "Chart"
-                            Destination.CONTROLS -> "Controls"
-                            Destination.ROUTE -> "Route"
-                            Destination.DIAGNOSTICS -> "Diagnostics"
-                        },
-                    )
-                },
-                actions = {
-                    if (destination != Destination.CONTROLS) {
-                        IconButton(onClick = { viewModel.requestStop() }) {
-                            Icon(
-                                imageVector = Icons.Default.Warning,
-                                contentDescription = "Stop the motor",
-                                tint = androidx.compose.material3.MaterialTheme.colorScheme.error,
-                            )
-                        }
-                    }
-                },
-            )
-        },
         bottomBar = {
             NavigationBar {
                 Destination.entries.forEach { entry ->
@@ -106,14 +77,23 @@ fun DentexApp(viewModel: MainViewModel = viewModel()) {
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { padding ->
-        Box(modifier = Modifier.fillMaxSize().padding(padding)) {
-            when (destination) {
-                Destination.CONNECT -> ConnectScreen(viewModel)
-                Destination.DASHBOARD -> DashboardScreen(viewModel)
-                Destination.CHART -> ChartScreen(viewModel)
-                Destination.CONTROLS -> ControlsScreen(viewModel)
-                Destination.ROUTE -> RouteScreen(viewModel)
-                Destination.DIAGNOSTICS -> DiagnosticsScreen(viewModel)
+        Column(modifier = Modifier.fillMaxSize().padding(padding)) {
+            // Controls has its own STOP next to "Motor on", and the chart draws a STOP sign.
+            if (destination != Destination.CONTROLS && destination != Destination.CHART) {
+                EmergencyStopButton(
+                    onStop = viewModel::requestStop,
+                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp),
+                )
+            }
+            Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
+                when (destination) {
+                    Destination.CONNECT -> ConnectScreen(viewModel)
+                    Destination.DASHBOARD -> DashboardScreen(viewModel)
+                    Destination.CHART -> ChartScreen(viewModel)
+                    Destination.CONTROLS -> ControlsScreen(viewModel)
+                    Destination.ROUTE -> RouteScreen(viewModel)
+                    Destination.DIAGNOSTICS -> DiagnosticsScreen(viewModel)
+                }
             }
         }
     }

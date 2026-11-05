@@ -47,7 +47,6 @@ fun ControlsScreen(viewModel: MainViewModel) {
             .verticalScroll(rememberScrollState())
             .padding(16.dp),
     ) {
-        Text("Controls", style = MaterialTheme.typography.headlineSmall)
         Text(
             text = when (gate) {
                 CommandGateState.READY ->

@@ -105,7 +105,6 @@ fun ConnectScreen(viewModel: MainViewModel) {
     }
 
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-        Text("Motor connection", style = MaterialTheme.typography.headlineSmall)
         Text(
             text = "Switch on the remote control of the motor first. The phone talks to the " +
                 "remote, and the remote talks to the motor.",

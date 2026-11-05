@@ -36,8 +36,6 @@ fun DashboardScreen(viewModel: MainViewModel) {
             .verticalScroll(rememberScrollState())
             .padding(16.dp),
     ) {
-        Text("Telemetry", style = MaterialTheme.typography.headlineSmall)
-
         SectionHeader("Motor")
         TelemetryRow {
             TelemetryCard(

@@ -23,7 +23,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material3.Button
@@ -102,7 +101,7 @@ fun ChartScreen(viewModel: MainViewModel) {
 
     val installed = chart
     if (installed == null) {
-        NoChart(path = viewModel.chartPath(), onImport = import)
+        NoChart(path = viewModel.chartPath(), onImport = import, onStop = viewModel::requestStop)
         return
     }
 
@@ -112,6 +111,7 @@ fun ChartScreen(viewModel: MainViewModel) {
         rainbow = rainbowFile?.takeIf { showRainbow },
         rainbowInstalled = rainbowFile != null,
         onRainbowClick = { if (rainbowFile == null) import() else viewModel.setShowRainbow(!showRainbow) },
+        onStop = viewModel::requestStop,
         telemetry = state.telemetry,
         route = route,
         onLongPress = { if (editable) viewModel.addWaypoint(it) },
@@ -124,6 +124,7 @@ private fun ChartView(
     rainbow: ChartStore.InstalledChart?,
     rainbowInstalled: Boolean,
     onRainbowClick: () -> Unit,
+    onStop: () -> Unit,
     telemetry: MotorTelemetry,
     route: List<Waypoint>,
     onLongPress: (Waypoint) -> Unit,
@@ -271,9 +272,9 @@ private fun ChartView(
             shape = MaterialTheme.shapes.small,
         ) {
             Text(
-                text = "NOT FOR NAVIGATION · EMODnet Bathymetry · © OpenStreetMap, OpenSeaMap",
+                text = "EMODnet Bathymetry · © OpenStreetMap, OpenSeaMap",
                 style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.error,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
             )
         }
@@ -283,6 +284,7 @@ private fun ChartView(
             horizontalAlignment = Alignment.End,
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
+            StopSignButton(onStop = onStop)
             FilterChip(
                 selected = rainbow != null,
                 onClick = onRainbowClick,
@@ -302,7 +304,6 @@ private fun ChartView(
                     ),
                 )
             }
-            if (position != null) PositionSourceLabel(position, night)
         }
 
         Surface(
@@ -381,37 +382,6 @@ private fun phoneLocation(context: Context, allowed: Boolean): Location? {
     return location
 }
 
-/** Which GPS the marker is from, in the marker's colour. */
-@Composable
-private fun PositionSourceLabel(position: BoatPosition, night: Boolean) {
-    val palette = if (night) ChartStyle.NIGHT else ChartStyle.DAY
-    val color = when {
-        position.stale -> palette.boatStale
-        position.source == PositionSource.PHONE -> palette.boatPhone
-        else -> palette.boatMotor
-    }
-    Surface(
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
-        shape = MaterialTheme.shapes.small,
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(10.dp)
-                    .background(Color(android.graphics.Color.parseColor(color)), CircleShape),
-            )
-            Text(
-                text = position.source.label + if (position.stale) " · no recent fix" else "",
-                style = MaterialTheme.typography.labelSmall,
-            )
-        }
-    }
-}
-
 /** Colour stops of the rainbow layer that occur in the Adriatic (it is nowhere deeper than about 1250 m). */
 @Composable
 private fun RainbowLegend() {
@@ -438,11 +408,12 @@ private fun RainbowLegend() {
 }
 
 @Composable
-private fun NoChart(path: String, onImport: () -> Unit) {
+private fun NoChart(path: String, onImport: () -> Unit, onStop: () -> Unit) {
     Column(
         modifier = Modifier.fillMaxSize().padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
+        EmergencyStopButton(onStop = onStop)
         Text("No chart installed", style = MaterialTheme.typography.headlineSmall)
         Text(
             text = "The depth chart is a separate file, adriatic.pmtiles, built with the tools in " +

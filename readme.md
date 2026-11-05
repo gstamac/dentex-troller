@@ -146,7 +146,7 @@ within range before it answers.
    neither has a recent fix. The phone position is only displayed. The chart never sends
    anything to the motor. It needs the chart file, see [Offline chart](#offline-chart).
 4. **Controls** — propulsion commands stay disabled until a type 110 motor was confirmed. The stop
-   command is always available from the top bar. Switching to a mode asks for a confirmation.
+   command is always available: a STOP button at the top of every screen, and a STOP sign on the chart. Switching to a mode asks for a confirmation.
 5. **Route** — uploads and downloads waypoints. Uploading a route never starts the motor.
 6. **Log** — shows the raw traffic in both directions and exports it as text so that it can be
    compared with a capture from the Helmsman application. Every device seen during a scan is
