@@ -50,8 +50,10 @@ import java.util.Locale
  * @param title the one line shown while the sheet is pulled down.
  * @param details the lines shown once it is pulled up, above the distance.
  * @param at the spot the info is about; the distance is measured to it and "Move boat here" goes there.
- *   For a route it is the first waypoint, and the distances are to the start and the nearest point.
+ *   For a route it is the waypoint at [routeStart].
  * @param marked true when the chart draws a ring at [at], for spots that have no symbol of their own.
+ * @param routeStart for a route, the index of the waypoint Follow route starts from: the tapped
+ *   waypoint, or the first waypoint of the tapped section.
  */
 internal data class MapInfo(
     val title: String,
@@ -60,6 +62,17 @@ internal data class MapInfo(
     val marked: Boolean = false,
     val pin: Pin? = null,
     val routeId: String? = null,
+    val routeStart: Int? = null,
+)
+
+/** The info for [route] with Follow route starting at waypoint [start], which is marked. */
+internal fun routeInfo(route: SavedRoute, start: Int): MapInfo = MapInfo(
+    title = "Route: ${route.name}",
+    details = routeDetails(route) + "Start at waypoint ${start + 1} of ${route.waypoints.size}",
+    at = route.waypoints[start],
+    marked = true,
+    routeId = route.id,
+    routeStart = start,
 )
 
 /**
@@ -166,15 +179,15 @@ internal fun InfoSheet(
     }
 }
 
-/** How far the boat is from what was tapped; for a route, from its start and its nearest point. */
+/** How far the boat is from what was tapped; for a route, from the marked waypoint and its nearest point. */
 private fun distanceLines(info: MapInfo, route: SavedRoute?, boat: BoatPosition?): List<String> {
     val from = boat?.let { Waypoint(it.latitude, it.longitude) }
     if (route != null) {
         if (route.waypoints.isEmpty()) return emptyList()
         if (from == null) return listOf("Boat position unknown")
-        val start = route.waypoints.first()
+        val index = (info.routeStart ?: 0).coerceIn(0, route.waypoints.lastIndex)
         return listOfNotNull(
-            "Start: ${distanceAndBearing(from, start)}",
+            "Waypoint ${index + 1}: ${distanceAndBearing(from, route.waypoints[index])}",
             nearestPointOnRoute(route.waypoints, from)
                 ?.takeIf { route.waypoints.size > 1 }
                 ?.let { "Nearest point: ${distanceAndBearing(from, it)}" },

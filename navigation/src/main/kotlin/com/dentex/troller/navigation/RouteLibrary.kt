@@ -166,20 +166,3 @@ fun nearestSection(route: List<Waypoint>, from: Waypoint): RouteSection? {
 fun nearestPointOnRoute(route: List<Waypoint>, from: Waypoint): Waypoint? =
     nearestSection(route, from)?.point ?: route.firstOrNull()
 
-/**
- * The index of the waypoint to follow the route from, for a boat at [from].
- *
- * Far from the route that is 0, the start. Within [joinMeters] of the route line the boat is
- * already on it, so it carries on with the waypoint that ends the closest section, or with the
- * one after that when it is already at that waypoint too.
- */
-fun joinIndex(route: List<Waypoint>, from: Waypoint, joinMeters: Double = JOIN_ROUTE_METERS): Int {
-    val section = nearestSection(route, from) ?: return 0
-    if (section.meters > joinMeters) return 0
-    var next = section.index + 1
-    if (next < route.lastIndex && distanceMeters(from, route[next]) <= joinMeters) next++
-    return next
-}
-
-/** How close to a route the boat must be to join it instead of going to its start. */
-const val JOIN_ROUTE_METERS = 10.0

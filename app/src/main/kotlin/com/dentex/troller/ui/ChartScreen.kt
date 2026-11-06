@@ -92,7 +92,6 @@ import com.dentex.troller.haswing.CommandGateState
 import com.dentex.troller.haswing.MotorTelemetry
 import com.dentex.troller.haswing.ReportedMode
 import com.dentex.troller.navigation.GoToState
-import com.dentex.troller.navigation.joinIndex
 import com.dentex.troller.navigation.MissionProgress
 import com.dentex.troller.navigation.Pin
 import com.dentex.troller.navigation.PinLibrary
@@ -394,12 +393,22 @@ private fun ChartView(
                     tapped = MapInfo("Pin: ${pin.name}", listOfNotNull(date, positionLine(at)), at = at, marked = true, pin = pin)
                     return@addOnMapClickListener true
                 }
-                // Outside route mode only the selected route is drawn.
-                val onRoute = m.queryRenderedFeatures(box, ChartStyle.LAYER_ROUTE_POINTS, ChartStyle.LAYER_ROUTE_LINE).isNotEmpty()
+                // Outside route mode only the selected route is drawn. A tapped waypoint, or the
+                // first waypoint of a tapped section, is marked: Follow route starts there.
                 val route = currentRoutes.selected
-                if (onRoute && route != null) {
-                    // "Move boat here" on a route goes to its first waypoint.
-                    tapped = MapInfo("Route: ${route.name}", routeDetails(route), at = route.waypoints.firstOrNull(), routeId = route.id)
+                val tappedPoint = m.queryRenderedFeatures(box, ChartStyle.LAYER_ROUTE_POINTS).firstOrNull()
+                    ?.getNumberProperty("index")?.toInt()
+                val tappedSection = if (tappedPoint == null && route != null) {
+                    val onScreen = route.waypoints.map { m.projection.toScreenLocation(LatLng(it.latitude, it.longitude)) }
+                    RouteHit.segment(onScreen.map { it.x to it.y }, screen.x, screen.y, reach)?.segment
+                } else {
+                    null
+                }
+                val onLine = tappedSection != null ||
+                    m.queryRenderedFeatures(box, ChartStyle.LAYER_ROUTE_LINE).isNotEmpty()
+                if (route != null && route.waypoints.isNotEmpty() && (tappedPoint != null || onLine)) {
+                    val start = (tappedPoint ?: tappedSection ?: 0).coerceIn(0, route.waypoints.lastIndex)
+                    tapped = routeInfo(route, start)
                     return@addOnMapClickListener true
                 }
                 val mark = m.queryRenderedFeatures(box, ChartStyle.LAYER_SEAMARK_ICON, ChartStyle.LAYER_SEAMARK_DOT).firstOrNull()
@@ -507,11 +516,8 @@ private fun ChartView(
     // While the boat can be moved, a tapped spot gets the dashed line from the boat that a go-to
     // has. It has its own ring already, so the go-to ring is left out.
     val canMove = goTo.blockedBecause == null
-    // For a route, the line runs to the waypoint Follow route would head for first.
-    val joinSpot = highlightedRoute?.waypoints?.takeIf { it.isNotEmpty() }?.let { points ->
-        points[position?.let { joinIndex(points, Waypoint(it.latitude, it.longitude)) } ?: 0]
-    }
-    val infoSpot = (joinSpot ?: tapped?.at)?.takeIf { canMove && !routeMode && goToTarget == null }
+    // For a route, [MapInfo.at] is the marked waypoint that Follow route starts from.
+    val infoSpot = tapped?.at?.takeIf { canMove && !routeMode && goToTarget == null }
     LaunchedEffect(style, goToTarget, infoSpot, position, goTo.state.active) {
         val json = if (goToTarget != null) {
             ChartGeoJson.goTo(goToTarget, position, goTo.state.active)
@@ -636,15 +642,14 @@ private fun ChartView(
                 boat = position,
                 onReset = { tapped = null },
                 onDeletePin = { confirmDeletePin = it },
-                // A route is followed from its first waypoint, or joined where the boat already is
-                // on it (within JOIN_ROUTE_METERS); anything else is one point.
+                // A route is followed from the waypoint marked by the tap; anything else is one point.
                 onMoveHere = if (canMove) {
                     { picked ->
                         val route = infoRoute
                         confirmGoTo = when {
                             route != null && route.waypoints.isNotEmpty() -> {
-                                val join = position?.let { joinIndex(route.waypoints, Waypoint(it.latitude, it.longitude)) } ?: 0
-                                GoToRequest(route.waypoints.drop(join), route.name, skipped = join)
+                                val start = (picked.routeStart ?: 0).coerceIn(0, route.waypoints.lastIndex)
+                                GoToRequest(route.waypoints.drop(start), route.name, skipped = start)
                             }
                             picked.at != null -> GoToRequest(listOf(picked.at))
                             else -> null

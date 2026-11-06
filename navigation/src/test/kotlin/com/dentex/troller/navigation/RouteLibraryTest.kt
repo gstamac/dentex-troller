@@ -90,32 +90,6 @@ class RouteLibraryTest {
     private val square = listOf(Waypoint(44.0, 14.0), Waypoint(44.0, 14.02), Waypoint(44.02, 14.02), Waypoint(44.02, 14.0))
 
     @Test
-    fun farFromTheRouteItStartsAtTheBeginning() {
-        assertEquals(0, joinIndex(square, Waypoint(43.99, 14.01)))
-    }
-
-    @Test
-    fun onASectionItCarriesOnWithTheWaypointThatEndsIt() {
-        // 5 m north of the middle of the first section.
-        assertEquals(1, joinIndex(square, Waypoint(44.000045, 14.01)))
-        // On the second section, going north.
-        assertEquals(2, joinIndex(square, Waypoint(44.01, 14.02)))
-    }
-
-    @Test
-    fun atAWaypointItHeadsForTheOneAfter() {
-        assertEquals(2, joinIndex(square, Waypoint(44.0, 14.02)))
-        // At the start it goes to waypoint 2, not back to waypoint 1.
-        assertEquals(1, joinIndex(square, Waypoint(44.0, 14.0)))
-    }
-
-    @Test
-    fun onTheLastSectionItHeadsForTheLastWaypoint() {
-        assertEquals(3, joinIndex(square, Waypoint(44.02, 14.01)))
-        assertEquals(3, joinIndex(square, Waypoint(44.02, 14.0)))
-    }
-
-    @Test
     fun aSectionIsFoundWithItsDistance() {
         val section = nearestSection(square, Waypoint(44.000045, 14.01))!!
         assertEquals(0, section.index)

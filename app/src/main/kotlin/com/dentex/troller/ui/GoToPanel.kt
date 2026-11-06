@@ -28,7 +28,7 @@ import java.util.Locale
 
 /**
  * What "Move boat here" or "Follow route" asks for: one point, or a route called [name]. A route
- * the boat is already on is joined: [skipped] waypoints are left out and [waypoints] is the rest.
+ * started from a later waypoint leaves the first [skipped] out and [waypoints] is the rest.
  */
 internal data class GoToRequest(val waypoints: List<Waypoint>, val name: String? = null, val skipped: Int = 0) {
     val target: Waypoint get() = waypoints.first()
@@ -144,7 +144,7 @@ internal fun ConfirmGoToDialog(request: GoToRequest, boat: BoatPosition?, onConf
             Text(
                 if (request.followsRoute) {
                     val join = if (request.skipped > 0) {
-                        "The boat is on the route, so it joins at waypoint ${request.skipped + 1} of ${request.skipped + count}.\n"
+                        "Starts at waypoint ${request.skipped + 1} of ${request.skipped + count}.\n"
                     } else {
                         ""
                     }

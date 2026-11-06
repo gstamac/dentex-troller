@@ -134,17 +134,16 @@ class GoToAgainstSimulatorTest {
     }
 
     @Test
-    fun aBoatAlreadyOnTheRouteJoinsItInsteadOfGoingBackToTheStart() = runTest {
+    fun aRouteStartedFromALaterWaypointLeavesTheEarlierOnesOut() = runTest {
         val rig = Rig(this)
         val start = SimulatedMotor.START_LATITUDE to SimulatedMotor.START_LONGITUDE
-        // The boat sits halfway along the first section.
+        // The boat sits halfway along the first section and starts the route at waypoint 2.
         val route = listOf(
             Waypoint(start.first, start.second - 0.0012),
             Waypoint(start.first, start.second + 0.0012),
             Waypoint(start.first + 0.0009, start.second + 0.0012),
         )
-        val join = com.dentex.troller.navigation.joinIndex(route, Waypoint(start.first, start.second))
-        assertEquals(1, join)
+        val join = 1
 
         rig.simulator.start()
         advanceTimeBy(3_000)
