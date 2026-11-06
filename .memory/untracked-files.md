@@ -13,6 +13,6 @@ Never stage these files, even with `git add -A`:
 - `icon.png` and `icon2.png`: source art. The app icon was generated from `icon.png` into the mipmap PNGs.
 - `sim-messages.md`
 
-**Why:** these are private data, or files covered by vendor material the owner doesn't want in the repo ([[offline-chart-decisions]]).
+**Why:** these are private data, or research and vendor material the owner doesn't want in the repo.
 
 **How to apply:** when committing, add paths explicitly (for example `git add app/src readme.md`) and check that `git status` still lists these as untracked.

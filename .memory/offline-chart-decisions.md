@@ -1,6 +1,6 @@
 ---
 name: offline-chart-decisions
-description: Why the chart is EMODnet + OSM PMTiles outside the APK, and why Navionics data is off the table
+description: Why the chart is EMODnet + OSM PMTiles outside the APK
 metadata:
   type: project
 ---
@@ -17,5 +17,6 @@ because there may be no mobile data at sea.
 - The file is too large for git (GitHub refuses files over 100 MB).
 - MapLibre reads PMTiles only from a real file path, not from assets.
 
-**How to apply:** don't suggest bundling the chart in the APK, and don't revisit Navionics extraction.
+**How to apply:** don't suggest bundling the chart in the APK. On 2026-11-06 the owner got another
+depth source and will convert it to a GeoTIFF or CSV for `tools/charts`.
 Near-shore depth detail is limited by the roughly 115 m EMODnet grid; the SDK is the upgrade path.
