@@ -110,6 +110,7 @@ import kotlinx.coroutines.delay
 import java.text.DateFormat
 import java.util.Date
 import java.util.Locale
+import kotlin.math.abs
 import kotlin.math.hypot
 
 /**
@@ -337,21 +338,34 @@ private fun ChartView(
             m.setMaxZoomPreference(MAX_ZOOM)
             val (west, south, east, north) = ChartStyle.BOUNDS.toList()
             m.setLatLngBoundsForCameraTarget(LatLngBounds.from(north, east, south, west))
+            val startZoom = savedZoom ?: if (hasPosition) FOLLOW_ZOOM else START_ZOOM
             m.cameraPosition = CameraPosition.Builder()
                 .target(LatLng(latitude ?: START_LATITUDE, longitude ?: START_LONGITUDE))
-                .zoom(savedZoom ?: if (hasPosition) FOLLOW_ZOOM else START_ZOOM)
+                .zoom(startZoom)
                 .build()
-            // Kept for the next start; saved only when it changed, as the camera also settles after following.
-            var lastZoom = m.cameraPosition.zoom
+            // The map can change the zoom while it is first laid out, so the start zoom is applied
+            // again once the camera first settles. Only a zoom the user chose with a gesture is
+            // kept for the next start; following and the start itself never overwrite it.
+            var started = false
+            var gesture = false
             m.addOnCameraIdleListener {
                 val zoom = m.cameraPosition.zoom
-                if (zoom != lastZoom) {
-                    lastZoom = zoom
-                    onZoomSettled(zoom)
+                when {
+                    !started -> {
+                        started = true
+                        if (abs(zoom - startZoom) > 0.01) m.moveCamera(CameraUpdateFactory.zoomTo(startZoom))
+                    }
+                    gesture -> {
+                        gesture = false
+                        onZoomSettled(zoom)
+                    }
                 }
             }
             m.addOnCameraMoveStartedListener { reason ->
-                if (reason == MapLibreMap.OnCameraMoveStartedListener.REASON_API_GESTURE) follow = false
+                if (reason == MapLibreMap.OnCameraMoveStartedListener.REASON_API_GESTURE) {
+                    gesture = true
+                    follow = false
+                }
             }
             m.addOnMapClickListener { point ->
                 val screen = m.projection.toScreenLocation(point)
@@ -425,6 +439,13 @@ private fun ChartView(
                     tapped = MapInfo(lines.first(), lines.drop(1) + positionLine(spot), at = spot, marked = true)
                     return@addOnMapClickListener true
                 }
+                tapped = spotInfo(m, point)
+                true
+            }
+            // A long press always takes the spot itself, ignoring pins, routes and seamarks
+            // close to it, so the depth there can be read.
+            m.addOnMapLongClickListener { point ->
+                if (currentRouteMode) return@addOnMapLongClickListener false
                 tapped = spotInfo(m, point)
                 true
             }
