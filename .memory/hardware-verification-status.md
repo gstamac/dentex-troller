@@ -36,6 +36,11 @@ waypoint the motor heads for from `RAW_IMU.zacc` (Helmsman's "target point"), re
 index into the uploaded route. Not yet confirmed on the motor: that it is 0-based, and that the
 motor goes through every waypoint in order.
 
+On 2026-11-06 the chart got icon motor controls (speed, turn, anchor, start/stop, navigate) and a
+status badge. A go-to now starts straight from the navigate button, with no dialog. None of this
+has been seen on the phone screen or tried with the motor yet. Anchor is now also sent from cruise
+and other modes (mode 12), which is untested.
+
 The `simulator` module (sim build, 2026-11-05) models these observations. When a field test
 shows different motor behaviour, change `SimulatedMotor` and its tests to match, so land tests stay
 honest.
