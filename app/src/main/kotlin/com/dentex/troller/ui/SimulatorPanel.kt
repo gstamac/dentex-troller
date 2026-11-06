@@ -55,6 +55,13 @@ internal fun SimulatorPanel(simulator: SimulatorControls) {
                 FilledTonalButton(onClick = { run("link", "drop") }) { Text("Silence 8 s") }
                 FilledTonalButton(onClick = { run("link", "lose") }) { Text("Lose link 15 s") }
             }
+            // As if the mode button on the remote was pressed, without the app asking.
+            Text("Remote button", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onTertiaryContainer)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                FilledTonalButton(onClick = { run("mode", "manual") }) { Text("Manual") }
+                FilledTonalButton(onClick = { run("mode", "anchor") }) { Text("Anchor") }
+                FilledTonalButton(onClick = { run("mode", "navigation") }) { Text("Navigation") }
+            }
             Text(result, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onTertiaryContainer)
         }
     }

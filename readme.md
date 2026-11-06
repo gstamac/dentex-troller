@@ -129,20 +129,7 @@ starts at the test position 44.216687, 14.793422.
 
 The **Log** screen has buttons for the common cases. Everything can also be set with adb:
 
-```bash
-adb shell am broadcast -a com.dentex.troller.SIM --es cmd status
-adb shell am broadcast -a com.dentex.troller.SIM --es cmd position --es value "44.2167,14.7934"
-adb shell am broadcast -a com.dentex.troller.SIM --es cmd heading --es value 90
-adb shell am broadcast -a com.dentex.troller.SIM --es cmd gps --es value nofix         # or fix
-adb shell am broadcast -a com.dentex.troller.SIM --es cmd arrival --es value manual    # anchor, manual or circle
-adb shell am broadcast -a com.dentex.troller.SIM --es cmd current --es value "0.5,90"  # knots, flowing towards
-adb shell am broadcast -a com.dentex.troller.SIM --es cmd timescale --es value 10      # simulated seconds per second
-adb shell am broadcast -a com.dentex.troller.SIM --es cmd fail --es value navigation   # none, upload, navigation or anchor
-adb shell am broadcast -a com.dentex.troller.SIM --es cmd battery --es value 20
-adb shell am broadcast -a com.dentex.troller.SIM --es cmd link --es value "drop,8"     # motor silent, the watchdog fires
-adb shell am broadcast -a com.dentex.troller.SIM --es cmd link --es value "lose,15"    # remote out of range, then reconnect
-adb shell am broadcast -a com.dentex.troller.SIM --es cmd reset
-```
+located in sim-messages.md
 
 Each command prints the simulator state in the `data=` of the broadcast result and logs it on
 the Log screen. The model is only as good as what is known about the motor: confirm anything new

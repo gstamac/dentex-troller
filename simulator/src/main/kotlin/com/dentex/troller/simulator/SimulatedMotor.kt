@@ -107,6 +107,21 @@ class SimulatedMotor(latitude: Double = START_LATITUDE, longitude: Double = STAR
     }
 
     /**
+     * Switches to [mode] as if its button on the remote or the foot pedal was pressed, without the
+     * app asking. The motor refuses as it would a command from the app, for example navigation
+     * without a route or anchor without a GPS fix.
+     */
+    fun pressMode(mode: Mode) = command(
+        when (mode) {
+            Mode.MANUAL -> MODE_MANUAL
+            Mode.ANCHOR -> MODE_ANCHOR
+            Mode.NAVIGATION -> MODE_NAVIGATION
+            Mode.CRUISE -> MODE_CRUISE
+            Mode.RECORD -> MODE_RECORD
+        },
+    )
+
+    /**
      * Takes a message from the app.
      *
      * @return the messages the motor answers with.

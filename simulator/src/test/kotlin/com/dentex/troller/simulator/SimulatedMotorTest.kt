@@ -97,6 +97,25 @@ class SimulatedMotorTest {
     }
 
     @Test
+    fun aModeButtonOnTheRemoteSwitchesTheMotorWithoutTheApp() {
+        val motor = SimulatedMotor()
+        motor.upload(target)
+        motor.command(15)
+        assertEquals(SimulatedMotor.Mode.NAVIGATION, motor.mode)
+
+        motor.pressMode(SimulatedMotor.Mode.MANUAL)
+        assertEquals(SimulatedMotor.Mode.MANUAL, motor.mode)
+        motor.pressMode(SimulatedMotor.Mode.ANCHOR)
+        assertEquals(SimulatedMotor.Mode.ANCHOR, motor.mode)
+
+        // Refused without a fix, as a command from the app would be.
+        motor.pressMode(SimulatedMotor.Mode.MANUAL)
+        motor.settings = motor.settings.copy(gpsFix = false)
+        motor.pressMode(SimulatedMotor.Mode.ANCHOR)
+        assertEquals(SimulatedMotor.Mode.MANUAL, motor.mode)
+    }
+
+    @Test
     fun anchorHoldsTheSpotAgainstACurrent() {
         val motor = SimulatedMotor()
         motor.settings = motor.settings.copy(currentKnots = 0.5, currentTowardDegrees = 90.0)

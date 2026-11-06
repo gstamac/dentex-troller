@@ -125,7 +125,8 @@ class MotorSimulator(
                 },
             )
             "arrival" -> motor.settings = motor.settings.copy(arrival = choice(SimulatedMotor.Arrival.entries.toTypedArray()))
-            "fail" -> motor.settings = motor.settings.copy(failure = choice(SimulatedMotor.Failure.entries.toTypedArray()))
+            "mode" -> motor.pressMode(choice(SimulatedMotor.Mode.entries.toTypedArray()))
+            "fail" ->motor.settings = motor.settings.copy(failure = choice(SimulatedMotor.Failure.entries.toTypedArray()))
             "current" -> numbers(2).let { (knots, toward) ->
                 motor.settings = motor.settings.copy(currentKnots = knots, currentTowardDegrees = toward)
             }
