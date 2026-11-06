@@ -1,34 +1,23 @@
 package com.dentex.troller.ui
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.widthIn
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.FilledTonalButton
-import androidx.compose.material3.FilledTonalIconButton
-import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.dentex.troller.haswing.ReportedMode
 
@@ -102,130 +91,113 @@ internal class MotorControls(
     val stopInManual: () -> Unit,
 )
 
-/** The motor controls that float above the bottom panel of the chart; they change with the mode. */
-@OptIn(ExperimentalLayoutApi::class)
+/**
+ * The motor controls, floating over the bottom of the chart as round icon buttons: on the left
+ * the speed (rabbit faster, turtle slower) between turn left and right, on the right what the
+ * mode allows. The action buttons use the symbols of the status badge: the anchor, the
+ * propeller for Start, the navigation arrow for Continue navigation and the square for Stop.
+ */
 @Composable
 internal fun MotorControlBar(controls: MotorControls, onContinue: (GoToRequest) -> Unit) {
-    Surface(
+    val set = controls.set
+    val speed = set == ControlSet.MANUAL || set == ControlSet.NAVIGATION || set == ControlSet.OTHER
+    val steering = set == ControlSet.MANUAL
+    Row(
         modifier = Modifier.fillMaxWidth(),
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
-        shape = MaterialTheme.shapes.large,
-        shadowElevation = 4.dp,
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.Bottom,
     ) {
-        Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
-            FlowRow(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
-                verticalArrangement = Arrangement.spacedBy(6.dp),
-                itemVerticalAlignment = Alignment.CenterVertically,
-            ) {
-                when (controls.set) {
-                    ControlSet.MANUAL -> {
-                        SpeedControl(controls)
-                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                            RoundButton(Icons.AutoMirrored.Filled.KeyboardArrowLeft, "Turn left", controls.turnLeft)
-                            RoundButton(Icons.AutoMirrored.Filled.KeyboardArrowRight, "Turn right", controls.turnRight)
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            // Always shown, so they stay where the hand expects them; disabled where the mode has no use
+            // for them: steering outside manual (navigation and anchor steer by themselves), and both
+            // in anchor mode or before the motor answers.
+            RoundButton("Turn left", CONTROL_FILL, SMALL, enabled = steering, onClick = controls.turnLeft) { r ->
+                turnGlyph(r, CONTROL_INK, right = false)
+            }
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                // The animals are drawn a little larger: they are wide but not tall.
+                RoundButton("Speed up", CONTROL_FILL, SMALL, enabled = speed, onClick = controls.speedUp) { r ->
+                    rabbitGlyph(r * 1.2f, CONTROL_INK)
+                }
+                RoundButton("Speed down", CONTROL_FILL, SMALL, enabled = speed, onClick = controls.speedDown) { r ->
+                    turtleGlyph(r * 1.15f, CONTROL_INK, shell = CONTROL_FILL)
+                }
+            }
+            RoundButton("Turn right", CONTROL_FILL, SMALL, enabled = steering, onClick = controls.turnRight) { r ->
+                turnGlyph(r, CONTROL_INK, right = true)
+            }
+        }
+        Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            when (set) {
+                ControlSet.MANUAL -> {
+                    RoundButton("Anchor here", MotorRunState.ANCHOR.color, LARGE, onClick = controls.anchor) { r -> anchorGlyph(r) }
+                    // Start only while the motor reports its propeller off, so Stop is there otherwise.
+                    if (controls.propellerOn == false) {
+                        RoundButton("Start the motor", MotorRunState.MANUAL.color, LARGE, onClick = controls.start) { r ->
+                            propellerGlyph(r, hub = MotorRunState.MANUAL.color)
                         }
-                        BarButton("Anchor", onClick = controls.anchor)
-                        // Start only while the motor reports its propeller off, so Stop is there otherwise.
-                        if (controls.propellerOn != false) {
-                            StopButton(controls.stop)
-                        } else {
-                            Button(onClick = controls.start, contentPadding = BAR_PADDING, modifier = Modifier.height(BAR_HEIGHT)) {
-                                Text("Start")
-                            }
-                        }
-                    }
-                    ControlSet.ANCHOR -> {
-                        ModeLabel("Anchored")
-                        controls.resume?.let { rest ->
-                            Button(onClick = { onContinue(rest) }, contentPadding = BAR_PADDING, modifier = Modifier.height(BAR_HEIGHT)) {
-                                Text("Continue navigation")
-                            }
-                        }
-                        StopButton(controls.stopInManual)
-                    }
-                    ControlSet.NAVIGATION -> {
-                        SpeedControl(controls)
-                        BarButton("Anchor", enabled = controls.canAnchorNavigation, onClick = controls.anchorNavigation)
-                        StopButton(controls.stopNavigation)
-                    }
-                    ControlSet.OTHER -> {
-                        val name = controls.modeName
-                        if (name != null) ModeLabel(name)
-                        SpeedControl(controls)
-                        StopButton(controls.stopInManual)
-                    }
-                    ControlSet.STOP_ONLY -> {
-                        ModeLabel("Waiting for the motor")
+                    } else {
                         StopButton(controls.stop)
                     }
                 }
+                ControlSet.NAVIGATION -> {
+                    RoundButton(
+                        "Anchor here",
+                        MotorRunState.ANCHOR.color,
+                        LARGE,
+                        enabled = controls.canAnchorNavigation,
+                        onClick = controls.anchorNavigation,
+                    ) { r -> anchorGlyph(r) }
+                    StopButton(controls.stopNavigation)
+                }
+                ControlSet.ANCHOR -> {
+                    controls.resume?.let { rest ->
+                        RoundButton("Continue navigation", MotorRunState.NAVIGATION.color, LARGE, onClick = { onContinue(rest) }) { r ->
+                            navigationGlyph(r)
+                        }
+                    }
+                    StopButton(controls.stopInManual)
+                }
+                ControlSet.OTHER -> StopButton(controls.stopInManual)
+                ControlSet.STOP_ONLY -> StopButton(controls.stop)
             }
         }
     }
 }
 
-/** − speed + */
-@Composable
-private fun SpeedControl(controls: MotorControls) {
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-        SignButton("−", "Speed down", controls.speedDown)
-        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.widthIn(min = 40.dp)) {
-            Text("Speed", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(
-                text = controls.speed?.toString() ?: "–",
-                style = MaterialTheme.typography.titleMedium,
-                textAlign = TextAlign.Center,
-            )
-        }
-        SignButton("+", "Speed up", controls.speedUp)
-    }
-}
-
-@Composable
-private fun RoundButton(icon: ImageVector, description: String, onClick: () -> Unit) {
-    FilledTonalIconButton(onClick = onClick, modifier = Modifier.size(BAR_HEIGHT)) {
-        Icon(icon, contentDescription = description)
-    }
-}
-
-/** A round button with a sign for a label, for − and +. */
-@Composable
-private fun SignButton(sign: String, description: String, onClick: () -> Unit) {
-    FilledTonalIconButton(
-        onClick = onClick,
-        modifier = Modifier.size(BAR_HEIGHT).semantics { contentDescription = description },
-    ) {
-        Text(sign, style = MaterialTheme.typography.titleLarge)
-    }
-}
-
-@Composable
-private fun BarButton(label: String, enabled: Boolean = true, onClick: () -> Unit) {
-    FilledTonalButton(onClick = onClick, enabled = enabled, contentPadding = BAR_PADDING, modifier = Modifier.height(BAR_HEIGHT)) {
-        Text(label)
-    }
-}
-
-/** Stop in the colour of the STOP button; what it sends depends on the mode. */
+/** Stop: a white square on red, the colour of the STOP button. */
 @Composable
 private fun StopButton(onClick: () -> Unit) {
-    Button(
-        onClick = onClick,
-        colors = ButtonDefaults.buttonColors(
-            containerColor = MaterialTheme.colorScheme.error,
-            contentColor = MaterialTheme.colorScheme.onError,
-        ),
-        contentPadding = BAR_PADDING,
-        modifier = Modifier.height(BAR_HEIGHT),
-    ) { Text("Stop") }
+    RoundButton("Stop the motor", STOP_RED, LARGE, onClick = onClick) { r -> stopGlyph(r) }
 }
 
+/** A round button over the chart with a drawn symbol; [glyph] gets the radius to draw within. */
 @Composable
-private fun ModeLabel(text: String) {
-    Text(text, style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(horizontal = 6.dp))
+private fun RoundButton(
+    description: String,
+    fill: Color,
+    size: Dp,
+    enabled: Boolean = true,
+    onClick: () -> Unit,
+    glyph: DrawScope.(Float) -> Unit,
+) {
+    Surface(
+        onClick = onClick,
+        enabled = enabled,
+        shape = CircleShape,
+        color = fill,
+        shadowElevation = 4.dp,
+        modifier = Modifier
+            .size(size)
+            .alpha(if (enabled) 1f else 0.45f)
+            .semantics { contentDescription = description },
+    ) {
+        Canvas(modifier = Modifier.fillMaxSize()) { glyph(this.size.minDimension / 2 * 0.72f) }
+    }
 }
 
-private val BAR_HEIGHT = 44.dp
-private val BAR_PADDING = PaddingValues(horizontal = 14.dp, vertical = 0.dp)
+private val SMALL = 50.dp
+private val LARGE = 58.dp
+private val CONTROL_FILL = Color.White
+private val CONTROL_INK = Color(0xFF1B2A38)
+private val STOP_RED = Color(0xFFC8102E)

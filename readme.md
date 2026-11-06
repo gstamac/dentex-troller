@@ -178,12 +178,15 @@ within range before it answers.
    STOP, because manual mode leaves the propeller running; the same stop is sent when the motor leaves navigation
    by itself, unless it reports anchor mode. **Anchor** switches from navigation to anchor mode once, so the
    motor holds the boat where it is, without the stop. A lost link stops a go-to that has not started, and nothing is resent after a reconnect.
-   While the motor is connected and ready, **motor controls** float above the bottom panel and follow the mode the
-   motor reports: in manual (also when stopped) speed −/+, turn left/right, **Anchor** and **Start** (**Stop** while
-   the propeller runs); in navigation, or while a go-to starts, speed −/+, **Anchor** and **Stop**; in anchor mode
-   **Stop** (manual mode, then STOP) and, when anchoring interrupted a go-to of this app, **Continue navigation**,
-   which asks for a confirmation and starts the rest of it again from the waypoint the motor headed for, with a new
-   upload. Each control sends its command once. Apart from these and STOP, the chart sends nothing to the motor. It needs the chart file, see [Offline chart](#offline-chart).
+   While the link to the remote is up, **motor controls** float over the bottom of the chart as round icon
+   buttons and follow the mode the motor reports. On the left is the speed, a rabbit (faster) above a turtle
+   (slower), with turn left and right beside it; they are always there and disabled where the mode has no use
+   for them (steering outside manual, both in anchor mode or before the motor answers). On the right are the actions, with the symbols
+   of the status badge: in manual (also when stopped) the anchor and the propeller (Start; the red Stop square
+   while the propeller runs); in navigation, or while a go-to starts, the anchor and Stop; in anchor mode Stop
+   (manual mode, then STOP) and, when anchoring interrupted a go-to of this app, the navigation arrow (Continue
+   navigation), which asks for a confirmation and starts the rest of it again from the waypoint the motor
+   headed for, with a new upload. Until the motor answers only Stop is there. Each control sends its command once. Apart from these and STOP, the chart sends nothing to the motor. It needs the chart file, see [Offline chart](#offline-chart).
 4. **Controls** — propulsion commands stay disabled until a type 110 motor was confirmed. The stop
    command is always available: a STOP button at the top of every screen, and on the chart a Stop on the motor controls whenever the link to the remote is up, also before the motor answers. The **status badge** at the top right of the chart only shows the state and opens the connect screen: no connection (grey, crossed out; a turning arc while connecting), the remote connected but no motor (amber, with a question mark), or the motor's state (stopped, manual, anchored, navigation) with its speed as a ring of 10 dashes, as Helmsman counts speed steps. Switching to a mode asks for a confirmation.
 5. **Route** — uploads the selected route to the motor and downloads the one stored on it, which can be saved as a new route. Uploading a route never starts the motor.

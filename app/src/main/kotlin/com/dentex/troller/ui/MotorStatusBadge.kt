@@ -12,16 +12,13 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
-import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -178,70 +175,12 @@ private fun MotorIcon(status: MotorStatus.Motor) {
         val r = s * 0.32f
         when (status.state) {
             MotorRunState.STOPPED -> stopGlyph(r)
-            MotorRunState.MANUAL -> manualGlyph(r)
+            MotorRunState.MANUAL -> propellerGlyph(r, hub = color)
             MotorRunState.ANCHOR -> anchorGlyph(r)
             MotorRunState.NAVIGATION -> navigationGlyph(r)
             MotorRunState.OTHER -> drawCircle(Color.White, radius = r * 0.25f)
         }
     }
-}
-
-/** A square: the propeller is off. */
-private fun DrawScope.stopGlyph(r: Float) {
-    val side = r * 0.9f
-    drawRoundRect(
-        Color.White,
-        topLeft = Offset(center.x - side / 2, center.y - side / 2),
-        size = Size(side, side),
-        cornerRadius = CornerRadius(r * 0.12f),
-    )
-}
-
-/** A three-blade propeller: the motor runs under manual control. */
-private fun DrawScope.manualGlyph(r: Float) {
-    val length = r * 0.68f
-    val width = r * 0.36f
-    for (blade in 0 until 3) {
-        // Each blade leans a little off the radius, as a propeller blade is pitched.
-        rotate(degrees = blade * 120f + 15f, pivot = center) {
-            drawOval(
-                Color.White,
-                topLeft = Offset(center.x - width / 2, center.y - length),
-                size = Size(width, length),
-            )
-        }
-    }
-    drawCircle(Color.White, radius = r * 0.2f)
-    drawCircle(MotorRunState.MANUAL.color, radius = r * 0.08f)
-}
-
-/** An anchor: a ring, a shank with a stock, and curved arms. */
-private fun DrawScope.anchorGlyph(r: Float) {
-    val w = r * 0.14f
-    val stroke = Stroke(width = w, cap = StrokeCap.Round, join = StrokeJoin.Round)
-    val top = center.y - r * 0.62f
-    val bottom = center.y + r * 0.6f
-    drawCircle(Color.White, radius = r * 0.13f, center = Offset(center.x, top + r * 0.13f), style = Stroke(width = w * 0.8f))
-    drawLine(Color.White, Offset(center.x, top + r * 0.26f), Offset(center.x, bottom), strokeWidth = w, cap = StrokeCap.Round)
-    drawLine(Color.White, Offset(center.x - r * 0.3f, top + r * 0.42f), Offset(center.x + r * 0.3f, top + r * 0.42f), strokeWidth = w, cap = StrokeCap.Round)
-    val arms = Path().apply {
-        moveTo(center.x - r * 0.6f, center.y + r * 0.05f)
-        quadraticTo(center.x - r * 0.5f, bottom, center.x, bottom)
-        quadraticTo(center.x + r * 0.5f, bottom, center.x + r * 0.6f, center.y + r * 0.05f)
-    }
-    drawPath(arms, Color.White, style = stroke)
-}
-
-/** A navigation arrow pointing up and to the right. */
-private fun DrawScope.navigationGlyph(r: Float) {
-    val arrow = Path().apply {
-        moveTo(center.x + r * 0.55f, center.y - r * 0.55f)
-        lineTo(center.x - r * 0.62f, center.y - r * 0.02f)
-        lineTo(center.x - r * 0.05f, center.y + r * 0.02f)
-        lineTo(center.x - r * 0.02f, center.y + r * 0.62f)
-        close()
-    }
-    drawPath(arrow, Color.White)
 }
 
 private fun bluetoothRune(s: Float): Path = Path().apply {
