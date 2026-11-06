@@ -44,6 +44,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.sample
@@ -230,6 +231,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private var userDisconnected = false
 
     init {
+        // The chart has no go-to panel, so a go-to that fails says why in a snackbar, once.
+        viewModelScope.launch {
+            goTo.state
+                .map { state -> state.message.takeIf { state.phase == GoToState.Phase.FAILED } }
+                .distinctUntilChanged()
+                .collect { message -> message?.let(::notifyUser) }
+        }
         viewModelScope.launch {
             var linkWasUp = false
             transport.connectionState.collect { state ->
@@ -504,7 +512,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     /**
      * Moves the boat to [target]: uploads it as the motor's route and switches the motor to
-     * navigation mode. The chart asks for a confirmation first.
+     * navigation mode. The chart starts it as soon as it is asked for.
      */
     fun goTo(target: Waypoint) {
         goTo.start(target)?.let(::notifyUser)
@@ -513,7 +521,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     /**
      * Follows a whole route: uploads its waypoints as the motor's route and switches the motor
      * to navigation mode, so it steers to the first waypoint and on along the route. The chart
-     * asks for a confirmation first.
+     * starts it as soon as it is asked for.
      */
     fun followRoute(waypoints: List<Waypoint>, name: String, skipped: Int = 0) {
         goTo.start(waypoints, name, skipped)?.let(::notifyUser)
@@ -540,11 +548,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     /** Switches the motor from navigation to anchor mode, holding the boat where it is. */
     fun anchorGoTo() {
         goTo.anchor()
-    }
-
-    /** Clears an ended or failed go-to from the chart. */
-    fun dismissGoTo() {
-        goTo.dismiss()
     }
 
     /** Uploads a route to the motor. Uploading never starts propulsion. */

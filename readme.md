@@ -85,7 +85,7 @@ AGP 9 compiles the Kotlin sources of the Android modules with its built-in Kotli
 adb pair 192.168.88.101:33977
 ```
 ```bash
-adb connect 192.168.88.101:44249
+adb connect 192.168.88.101:44829
 ```
 
 ```bash
@@ -165,12 +165,12 @@ within range before it answers.
 2. **Dashboard** — shows the motor profile, the telemetry and the age of the last update. The
    profile is only reported after a heartbeat with a valid checksum was received.
 3. **Chart** — an offline depth chart of the Adriatic with the boat position and heading from the
-   motor telemetry. Tap the chart for the depth, a seamark, a pin or the selected route: a pull-up panel shows its title, and pulled up (drag or tap the title) the details and the distance and bearing from the boat; for a route, to the marked waypoint and its nearest point. A tapped depth or seamark is marked with a ring. A long press always shows the spot itself (its depth or land), ignoring pins, routes and seamarks close to it. The panel runs along the bottom edge and is always there: with nothing tapped it shows the boat (position source, position, heading, speed); dragging it down from its small state goes back to that. The **route** button under the layers button switches route mode: tap the chart to add a waypoint, tap the line between two waypoints to insert one there, tap a waypoint to select it, then drag it to move it or delete it, and tap another route to select it; **Routes** lists every saved route to pick, rename or delete, and **New route** starts one. Routes are saved on the phone automatically. **Pins** in the layers menu shows or hides marked spots, and **Import GPX…** adds the waypoints of a GPX file as pins (for example the markers exported from the Navionics Boating app; ones already there are skipped) and its routes as saved routes. The pin's panel can also delete it. While the motor is connected and ready, the panel of a pin, a seamark or a tapped spot has **Move boat here** at its top right (for a route, **Follow route**, which sends the route to the motor and navigates it from the marked waypoint: a tap on a waypoint marks that waypoint and a tap on a section marks the first waypoint of the section, and the waypoints before it are left out; the panel then shows the waypoint the motor heads for), and the chart draws a dashed line from the boat to it. The
+   motor telemetry. Tap the chart for the depth, a seamark, a pin or the selected route: a pull-up panel shows its title, and pulled up (drag or tap the title) the details and the distance and bearing from the boat; for a route, to the marked waypoint and its nearest point. A tapped depth or seamark is marked with a ring. A long press always shows the spot itself (its depth or land), ignoring pins, routes and seamarks close to it. The panel runs along the bottom edge and is always there: with nothing tapped it shows the boat (position source, position, heading, speed); dragging it down from its small state goes back to that. The **route** button under the layers button switches route mode: tap the chart to add a waypoint, tap the line between two waypoints to insert one there, tap a waypoint to select it, then drag it to move it or delete it, and tap another route to select it; **Routes** lists every saved route to pick, rename or delete, and **New route** starts one. Routes are saved on the phone automatically. **Pins** in the layers menu shows or hides marked spots, and **Import GPX…** adds the waypoints of a GPX file as pins (for example the markers exported from the Navionics Boating app; ones already there are skipped) and its routes as saved routes. The pin's panel can also delete it. While the motor is connected and ready, the **navigate** button of the motor controls (the blue navigation arrow) moves the boat to the selected pin, seamark or tapped spot, or follows the selected route from its marked waypoint (a tap on a waypoint marks that waypoint and a tap on a section marks the first waypoint of the section, and the waypoints before it are left out). It starts at once, without a confirmation, and the selection stays. While the go-to runs the chart draws a dashed line from the boat to the target, or to the waypoint the motor heads for; there is no go-to panel, and a go-to that fails says why in a snackbar. The
    **layers** button under the status badge picks the chart layer: Default or Rainbow depths. The boat is green when
    the position comes from the motor and light blue when the motor has no recent fix and the
    phone's own GPS is used instead (**Use phone GPS** asks for the permission); it turns grey when
-   neither has a recent fix. The phone position is only displayed. **Move boat here** in the info panel of a pin, a seamark or a
-   tapped spot asks for a confirmation, uploads the spot as a
+   neither has a recent fix. The phone position is only displayed. Navigating to a pin, a seamark or a
+   tapped spot uploads the spot as a
    one-waypoint route (replacing the route stored on the motor) and, a second after the motor acknowledges it,
    switches the motor to navigation mode once, as Helmsman starts a route. The go-to only counts as under way
    when the motor reports navigation mode; otherwise it fails and nothing is sent again. Navigation runs at the
@@ -182,11 +182,15 @@ within range before it answers.
    buttons and follow the mode the motor reports. On the left is the speed, a rabbit (faster) above a turtle
    (slower), with turn left and right beside it; they are always there and disabled where the mode has no use
    for them (steering outside manual, both in anchor mode or before the motor answers). On the right are the actions, with the symbols
-   of the status badge: in manual (also when stopped) the anchor and the propeller (Start; the red Stop square
-   while the propeller runs); in navigation, or while a go-to starts, the anchor and Stop; in anchor mode Stop
-   (manual mode, then STOP) and, when anchoring interrupted a go-to of this app, the navigation arrow (Continue
-   navigation), which asks for a confirmation and starts the rest of it again from the waypoint the motor
-   headed for, with a new upload. Until the motor answers only Stop is there. Each control sends its command once. Apart from these and STOP, the chart sends nothing to the motor. It needs the chart file, see [Offline chart](#offline-chart).
+   of the status badge, always in the same order: the anchor, then Start or Stop, then the navigation arrow
+   (navigate). Start (the propeller) shows in manual while the propeller is off and the red Stop square
+   otherwise; Stop ends navigation with manual mode and STOP, and in anchor and other modes sends manual mode,
+   then STOP. The anchor is disabled in anchor mode, and in navigation until navigation mode was sent. The
+   navigation arrow is disabled while the motor navigates; otherwise it goes to the selection. When
+   anchoring interrupted a go-to of this app and nothing new was selected since it started, it continues the
+   rest of it instead, from the waypoint the motor headed for, with a new upload. With nothing to go to it is
+   disabled. Until the motor answers only Stop is
+   enabled. Each control sends its command once. Apart from these and STOP, the chart sends nothing to the motor. It needs the chart file, see [Offline chart](#offline-chart).
 4. **Controls** — propulsion commands stay disabled until a type 110 motor was confirmed. The stop
    command is always available: a STOP button at the top of every screen, and on the chart a Stop on the motor controls whenever the link to the remote is up, also before the motor answers. The **status badge** at the top right of the chart only shows the state and opens the connect screen: no connection (grey, crossed out; a turning arc while connecting), the remote connected but no motor (amber, with a question mark), or the motor's state (stopped, manual, anchored, navigation) with its speed as a ring of 10 dashes, as Helmsman counts speed steps. Switching to a mode asks for a confirmation.
 5. **Route** — uploads the selected route to the motor and downloads the one stored on it, which can be saved as a new route. Uploading a route never starts the motor.

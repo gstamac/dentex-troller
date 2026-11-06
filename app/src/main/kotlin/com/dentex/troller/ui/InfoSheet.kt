@@ -9,14 +9,11 @@ import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -88,8 +85,6 @@ internal fun InfoSheet(
     boat: BoatPosition?,
     onReset: () -> Unit,
     onDeletePin: (Pin) -> Unit,
-    /** Starts a go-to to the spot; null when the boat cannot be moved now. */
-    onMoveHere: ((MapInfo) -> Unit)?,
 ) {
     var expanded by rememberSaveable { mutableStateOf(false) }
     val threshold = with(LocalDensity.current) { DRAG_THRESHOLD_DP.dp.toPx() }
@@ -144,19 +139,6 @@ internal fun InfoSheet(
                         .clickable { expanded = !expanded }
                         .padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 6.dp),
                 )
-                val at = info.at
-                if (at != null && onMoveHere != null) {
-                    FilledTonalButton(
-                        onClick = { onMoveHere(info) },
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
-                        modifier = Modifier.padding(end = 12.dp).height(34.dp),
-                    ) {
-                        Text(
-                            if (info.routeId != null) "Follow route" else "Move boat here",
-                            style = MaterialTheme.typography.labelLarge,
-                        )
-                    }
-                }
             }
             AnimatedVisibility(visible = expanded) {
                 Column(

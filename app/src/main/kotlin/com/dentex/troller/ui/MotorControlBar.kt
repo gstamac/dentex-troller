@@ -23,16 +23,16 @@ import com.dentex.troller.haswing.ReportedMode
 
 /** Which controls the bar shows, from the mode the motor reports. */
 internal enum class ControlSet {
-    /** Manual, or stopped in manual: speed, steering, anchor and start. */
+    /** Manual, or stopped in manual: speed, steering, anchor, start and navigate. */
     MANUAL,
 
-    /** Anchor: stop, and continue navigation when anchoring ended a go-to. */
+    /** Anchor: stop, and navigate (also to continue a go-to anchoring ended). */
     ANCHOR,
 
     /** Navigation, or a go-to that is starting: stop, anchor and speed. */
     NAVIGATION,
 
-    /** Any other mode (cruise, recording, the foot pedal): stop and speed. */
+    /** Any other mode (cruise, recording, the foot pedal): speed, anchor, stop and navigate. */
     OTHER,
 
     /**
@@ -71,7 +71,7 @@ internal class MotorControls(
     val propellerOn: Boolean?,
     /** False while a go-to is still uploading, before navigation mode was sent. */
     val canAnchorNavigation: Boolean,
-    /** Where Continue navigation goes; null hides it. */
+    /** What is left of a go-to that anchoring interrupted, for the navigate button. */
     val resume: GoToRequest?,
     val speedDown: () -> Unit,
     val speedUp: () -> Unit,
@@ -81,7 +81,7 @@ internal class MotorControls(
     val start: () -> Unit,
     /** Manual: the stop command. */
     val stop: () -> Unit,
-    /** Manual: switches to anchor mode. */
+    /** Manual and other modes: switches to anchor mode. */
     val anchor: () -> Unit,
     /** Navigation: ends it with manual mode and the stop command (Stop go-to). */
     val stopNavigation: () -> Unit,
@@ -95,10 +95,15 @@ internal class MotorControls(
  * The motor controls, floating over the bottom of the chart as round icon buttons: on the left
  * the speed (rabbit faster, turtle slower) between turn left and right, on the right what the
  * mode allows. The action buttons use the symbols of the status badge: the anchor, the
- * propeller for Start, the navigation arrow for Continue navigation and the square for Stop.
+ * propeller for Start, the navigation arrow for navigate and the square for Stop.
+ *
+ * On the right, from left to right: anchor, start or stop, and navigate. Anchor and navigate are
+ * always there; anchor is disabled in anchor mode and before the motor answers. Navigate goes to
+ * [navigate]: the selection on the chart, or the rest of a go-to that anchoring interrupted. It is
+ * disabled while the motor navigates, while there is nowhere to go or the boat cannot be moved.
  */
 @Composable
-internal fun MotorControlBar(controls: MotorControls, onContinue: (GoToRequest) -> Unit) {
+internal fun MotorControlBar(controls: MotorControls, navigate: GoToRequest?, onNavigate: (GoToRequest) -> Unit) {
     val set = controls.set
     val speed = set == ControlSet.MANUAL || set == ControlSet.NAVIGATION || set == ControlSet.OTHER
     val steering = set == ControlSet.MANUAL
@@ -127,42 +132,61 @@ internal fun MotorControlBar(controls: MotorControls, onContinue: (GoToRequest) 
                 turnGlyph(r, CONTROL_INK, right = true)
             }
         }
+        // Anchor, start or stop, and navigate: always there in the same places, disabled where the
+        // mode has no use for them.
         Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            val anchor: (() -> Unit)? = when (set) {
+                ControlSet.MANUAL, ControlSet.OTHER -> controls.anchor
+                ControlSet.NAVIGATION -> controls.anchorNavigation.takeIf { controls.canAnchorNavigation }
+                ControlSet.ANCHOR, ControlSet.STOP_ONLY -> null
+            }
+            RoundButton(
+                "Anchor here",
+                MotorRunState.ANCHOR.color,
+                LARGE,
+                enabled = anchor != null,
+                onClick = { anchor?.invoke() },
+            ) { r -> anchorGlyph(r) }
             when (set) {
-                ControlSet.MANUAL -> {
-                    RoundButton("Anchor here", MotorRunState.ANCHOR.color, LARGE, onClick = controls.anchor) { r -> anchorGlyph(r) }
-                    // Start only while the motor reports its propeller off, so Stop is there otherwise.
-                    if (controls.propellerOn == false) {
-                        RoundButton("Start the motor", MotorRunState.MANUAL.color, LARGE, onClick = controls.start) { r ->
-                            propellerGlyph(r, hub = MotorRunState.MANUAL.color)
-                        }
-                    } else {
-                        StopButton(controls.stop)
+                // Start only while the motor reports its propeller off, so Stop is there otherwise.
+                ControlSet.MANUAL -> if (controls.propellerOn == false) {
+                    RoundButton("Start the motor", MotorRunState.MANUAL.color, LARGE, onClick = controls.start) { r ->
+                        propellerGlyph(r, hub = MotorRunState.MANUAL.color)
                     }
+                } else {
+                    StopButton(controls.stop)
                 }
-                ControlSet.NAVIGATION -> {
-                    RoundButton(
-                        "Anchor here",
-                        MotorRunState.ANCHOR.color,
-                        LARGE,
-                        enabled = controls.canAnchorNavigation,
-                        onClick = controls.anchorNavigation,
-                    ) { r -> anchorGlyph(r) }
-                    StopButton(controls.stopNavigation)
-                }
-                ControlSet.ANCHOR -> {
-                    controls.resume?.let { rest ->
-                        RoundButton("Continue navigation", MotorRunState.NAVIGATION.color, LARGE, onClick = { onContinue(rest) }) { r ->
-                            navigationGlyph(r)
-                        }
-                    }
-                    StopButton(controls.stopInManual)
-                }
-                ControlSet.OTHER -> StopButton(controls.stopInManual)
+                ControlSet.NAVIGATION -> StopButton(controls.stopNavigation)
+                ControlSet.ANCHOR, ControlSet.OTHER -> StopButton(controls.stopInManual)
                 ControlSet.STOP_ONLY -> StopButton(controls.stop)
             }
+            // Not while the motor navigates or before it answers.
+            val canNavigate = set == ControlSet.MANUAL || set == ControlSet.ANCHOR || set == ControlSet.OTHER
+            NavigateButton(
+                navigate.takeIf { canNavigate },
+                resumes = navigate != null && navigate == controls.resume,
+                onNavigate = onNavigate,
+            )
         }
     }
+}
+
+/** Navigate: the navigation arrow on blue; [resumes] when it continues an interrupted go-to. */
+@Composable
+private fun NavigateButton(navigate: GoToRequest?, resumes: Boolean, onNavigate: (GoToRequest) -> Unit) {
+    val description = when {
+        navigate == null -> "Navigate: select a spot, a pin or a route first"
+        resumes -> "Continue navigation"
+        navigate.followsRoute -> "Follow route ${navigate.name}"
+        else -> "Move boat here"
+    }
+    RoundButton(
+        description,
+        MotorRunState.NAVIGATION.color,
+        LARGE,
+        enabled = navigate != null,
+        onClick = { navigate?.let(onNavigate) },
+    ) { r -> navigationGlyph(r) }
 }
 
 /** Stop: a white square on red, the colour of the STOP button. */

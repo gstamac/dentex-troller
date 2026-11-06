@@ -204,9 +204,6 @@ fun ChartScreen(viewModel: MainViewModel, onOpenConnect: () -> Unit) {
                 val name = request.name
                 if (name == null) viewModel.goTo(request.target) else viewModel.followRoute(request.waypoints, name, request.skipped)
             },
-            cancel = viewModel::cancelGoTo,
-            anchor = viewModel::anchorGoTo,
-            dismiss = viewModel::dismissGoTo,
         ),
         // The motor controls show whenever the link can carry a command: the transport only takes
         // writes once it is ready. Until the motor answers they offer only Stop, which is the
@@ -297,10 +294,20 @@ private fun ChartView(
     val currentPins by rememberUpdatedState(pins)
     var confirmDeletePin by remember { mutableStateOf<Pin?>(null) }
 
-    // What "Move boat here" or "Follow route" in the info panel asks to confirm.
-    var confirmGoTo by remember { mutableStateOf<GoToRequest?>(null) }
-    // While a route is followed, the line runs to the waypoint the motor reports it heads for.
-    val goToTarget = if (goTo.state.phase == GoToState.Phase.IDLE) null else goTo.state.heading(telemetry.targetPoint)
+    // The selection the last go-to started from. It stays selected; while it is, a go-to that
+    // anchoring interrupted is continued rather than started again from the beginning.
+    var navigatedFrom by remember { mutableStateOf<MapInfo?>(null) }
+    // The navigate button starts a go-to at once, without asking; checked again here, as the link
+    // may have dropped since the button was drawn.
+    val startGoTo: (GoToRequest) -> Unit = { request ->
+        if (goTo.blockedBecause == null) {
+            goTo.start(request)
+            navigatedFrom = tapped
+        }
+    }
+    // While a go-to runs, the line runs to the target, or to the waypoint of a followed route the
+    // motor reports it heads for.
+    val goToTarget = if (goTo.state.active) goTo.state.heading(telemetry.targetPoint) else null
 
     // Route mode: taps edit routes instead of showing the depth.
     var routeMode by rememberSaveable { mutableStateOf(false) }
@@ -567,10 +574,32 @@ private fun ChartView(
         style?.getSourceAs<GeoJsonSource>(ChartStyle.SOURCE_ROUTE_HIGHLIGHT)
             ?.setGeoJson(ChartGeoJson.routeLine(highlightedRoute?.waypoints ?: emptyList()))
     }
-    // While the boat can be moved, a tapped spot gets the dashed line from the boat that a go-to
-    // has. It has its own ring already, so the go-to ring is left out.
     val canMove = goTo.blockedBecause == null
-    // For a route, [MapInfo.at] is the marked waypoint that Follow route starts from.
+    // A route that was deleted takes its info with it; then the boat's own info shows.
+    val infoRoute = tapped?.routeId?.let { id -> routes.routes.firstOrNull { it.id == id } }
+    // Where the navigate button goes: the selection (a route from its marked waypoint, anything
+    // else as one point), or what is left of a go-to that anchoring interrupted, while nothing
+    // else was selected since that go-to started.
+    val selected = tapped?.let { picked ->
+        val route = infoRoute
+        when {
+            route != null && route.waypoints.isNotEmpty() -> {
+                val start = (picked.routeStart ?: 0).coerceIn(0, route.waypoints.lastIndex)
+                GoToRequest(route.waypoints.drop(start), route.name, skipped = start)
+            }
+            picked.routeId == null && picked.at != null -> GoToRequest(listOf(picked.at))
+            else -> null
+        }
+    }
+    val resume = motor?.resume
+    val navigateTo = when {
+        !canMove -> null
+        resume != null && (tapped == null || tapped == navigatedFrom) -> resume
+        else -> selected ?: resume
+    }
+    // While the boat can be moved, a tapped spot gets the dashed line from the boat that a go-to
+    // has. It has its own ring already, so the go-to ring is left out. For a route, [MapInfo.at]
+    // is the marked waypoint the navigate button starts from.
     val infoSpot = tapped?.at?.takeIf { canMove && !routeMode && goToTarget == null }
     LaunchedEffect(style, goToTarget, infoSpot, position, goTo.state.active) {
         val json = if (goToTarget != null) {
@@ -666,17 +695,11 @@ private fun ChartView(
                     modifier = Modifier.align(Alignment.End),
                 )
             }
-            // The motor controls sit just above the go-to panel or the info sheet.
+            // The motor controls sit just above the info sheet.
             if (!routeMode && motor != null) {
-                MotorControlBar(controls = motor, onContinue = { confirmGoTo = it })
+                MotorControlBar(controls = motor, navigate = navigateTo, onNavigate = startGoTo)
             }
-            if (!routeMode && goToTarget != null) {
-                GoToPanel(
-                    actions = goTo,
-                    boat = position,
-                    telemetry = telemetry,
-                )
-            } else if (routeMode) {
+            if (routeMode) {
                 RoutePanel(
                     routes = routes,
                     selectedWaypoint = shownWaypoint,
@@ -686,9 +709,7 @@ private fun ChartView(
             }
         }
         // The info sheet runs along the bottom edge, outside the padding of the panels above.
-        if (!routeMode && goToTarget == null) {
-            // A route that was deleted takes its info with it; then the boat's own info shows.
-            val infoRoute = tapped?.routeId?.let { id -> routes.routes.firstOrNull { it.id == id } }
+        if (!routeMode) {
             val info = tapped?.takeIf { it.routeId == null || infoRoute != null } ?: boatInfo(position, telemetry)
             InfoSheet(
                 info = info,
@@ -696,38 +717,9 @@ private fun ChartView(
                 boat = position,
                 onReset = { tapped = null },
                 onDeletePin = { confirmDeletePin = it },
-                // A route is followed from the waypoint marked by the tap; anything else is one point.
-                onMoveHere = if (canMove) {
-                    { picked ->
-                        val route = infoRoute
-                        confirmGoTo = when {
-                            route != null && route.waypoints.isNotEmpty() -> {
-                                val start = (picked.routeStart ?: 0).coerceIn(0, route.waypoints.lastIndex)
-                                GoToRequest(route.waypoints.drop(start), route.name, skipped = start)
-                            }
-                            picked.at != null -> GoToRequest(listOf(picked.at))
-                            else -> null
-                        }
-                    }
-                } else {
-                    null
-                },
             )
         }
         }
-    }
-
-    confirmGoTo?.let { request ->
-        ConfirmGoToDialog(
-            request = request,
-            boat = position,
-            onConfirm = {
-                confirmGoTo = null
-                // Checked again: the link may have dropped while the dialog was open.
-                if (goTo.blockedBecause == null) goTo.start(request)
-            },
-            onDismiss = { confirmGoTo = null },
-        )
     }
 
     confirmDeletePin?.let { pin ->
