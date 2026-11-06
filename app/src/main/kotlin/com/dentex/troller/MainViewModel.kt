@@ -30,6 +30,7 @@ import com.dentex.troller.navigation.MissionTransfer
 import com.dentex.troller.navigation.Route
 import com.dentex.troller.navigation.Gpx
 import com.dentex.troller.navigation.PinLibrary
+import com.dentex.troller.navigation.ResumeAfterAnchor
 import com.dentex.troller.navigation.RouteLibrary
 import com.dentex.troller.navigation.SavedRoute
 import com.dentex.troller.navigation.Waypoint
@@ -42,6 +43,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.sample
@@ -134,6 +136,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     /** The go-to that is starting or running, or how the last one ended. */
     val goToState: StateFlow<GoToState> = goTo.state
+
+    /** What is left of a go-to the motor left for anchor mode; Continue navigation starts it again. */
+    val resumeAfterAnchor: StateFlow<ResumeAfterAnchor.Rest?> = ResumeAfterAnchor().let { resume ->
+        combine(motor.telemetry, goTo.state) { telemetry, state ->
+            val mode = telemetry.reportedMode
+            resume.update(
+                navigating = mode?.let { it == ReportedMode.NAVIGATION },
+                anchored = mode == ReportedMode.ANCHOR,
+                goTo = state,
+                targetIndex = telemetry.targetPoint,
+            )
+        }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
+    }
 
     /**
      * Retained log records for the diagnostics screen.
@@ -507,6 +522,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     /** Ends the go-to; sends manual mode when navigation mode was sent. */
     fun cancelGoTo() {
         goTo.cancel()
+    }
+
+    /**
+     * Leaves the motor's mode for manual and stops the propeller, as Stop go-to does: manual mode
+     * alone leaves the propeller running. The stop command goes out even when manual mode could
+     * not be sent.
+     */
+    fun stopInManual() {
+        viewModelScope.launch {
+            reportFailure(motor.requestMode(MotorMode.MANUAL))
+            delay(GoToTarget.STOP_AFTER_MANUAL_MILLIS)
+            reportFailure(motor.requestStop())
+        }
     }
 
     /** Switches the motor from navigation to anchor mode, holding the boat where it is. */

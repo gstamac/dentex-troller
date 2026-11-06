@@ -85,7 +85,7 @@ AGP 9 compiles the Kotlin sources of the Android modules with its built-in Kotli
 adb pair 192.168.88.101:33977
 ```
 ```bash
-adb connect 192.168.88.101:44787
+adb connect 192.168.88.101:44249
 ```
 
 ```bash
@@ -158,7 +158,7 @@ The BLE peer is the **remote control** of the motor, not the motor itself. The p
 remote over Bluetooth and the remote talks to the motor, so the remote has to be switched on and
 within range before it answers.
 
-1. **Connect** — the app opens on the chart and, without a link, looks for the remote it was connected to last and connects to it. It does the same whenever the link is lost, scanning for 30 seconds at a time with a short pause in between, until the remote is back; the chart then shows a turning reconnect badge instead of the STOP sign. After a manual Disconnect it waits for you to connect again. Otherwise grant the Bluetooth permissions, scan for the remote and connect to it. The app
+1. **Connect** — the app opens on the chart and, without a link, looks for the remote it was connected to last and connects to it. It does the same whenever the link is lost, scanning for 30 seconds at a time with a short pause in between, until the remote is back; the chart's status badge then shows a turning arc. After a manual Disconnect it waits for you to connect again. Otherwise grant the Bluetooth permissions, scan for the remote and connect to it. The app
    opens the GATT service, subscribes to the notify characteristic and starts a MAVLink parser.
    The scan runs without a service filter, because the remote does not necessarily advertise the
    GATT service in its advertisement packet.
@@ -166,7 +166,7 @@ within range before it answers.
    profile is only reported after a heartbeat with a valid checksum was received.
 3. **Chart** — an offline depth chart of the Adriatic with the boat position and heading from the
    motor telemetry. Tap the chart for the depth, a seamark, a pin or the selected route: a pull-up panel shows its title, and pulled up (drag or tap the title) the details and the distance and bearing from the boat; for a route, to the marked waypoint and its nearest point. A tapped depth or seamark is marked with a ring. A long press always shows the spot itself (its depth or land), ignoring pins, routes and seamarks close to it. The panel runs along the bottom edge and is always there: with nothing tapped it shows the boat (position source, position, heading, speed); dragging it down from its small state goes back to that. The **route** button under the layers button switches route mode: tap the chart to add a waypoint, tap the line between two waypoints to insert one there, tap a waypoint to select it, then drag it to move it or delete it, and tap another route to select it; **Routes** lists every saved route to pick, rename or delete, and **New route** starts one. Routes are saved on the phone automatically. **Pins** in the layers menu shows or hides marked spots, and **Import GPX…** adds the waypoints of a GPX file as pins (for example the markers exported from the Navionics Boating app; ones already there are skipped) and its routes as saved routes. The pin's panel can also delete it. While the motor is connected and ready, the panel of a pin, a seamark or a tapped spot has **Move boat here** at its top right (for a route, **Follow route**, which sends the route to the motor and navigates it from the marked waypoint: a tap on a waypoint marks that waypoint and a tap on a section marks the first waypoint of the section, and the waypoints before it are left out; the panel then shows the waypoint the motor heads for), and the chart draws a dashed line from the boat to it. The
-   **layers** button under the STOP sign picks the chart layer: Default or Rainbow depths. The boat is green when
+   **layers** button under the status badge picks the chart layer: Default or Rainbow depths. The boat is green when
    the position comes from the motor and light blue when the motor has no recent fix and the
    phone's own GPS is used instead (**Use phone GPS** asks for the permission); it turns grey when
    neither has a recent fix. The phone position is only displayed. **Move boat here** in the info panel of a pin, a seamark or a
@@ -174,13 +174,18 @@ within range before it answers.
    one-waypoint route (replacing the route stored on the motor) and, a second after the motor acknowledges it,
    switches the motor to navigation mode once, as Helmsman starts a route. The go-to only counts as under way
    when the motor reports navigation mode; otherwise it fails and nothing is sent again. Navigation runs at the
-   speed the motor had last, so at speed 0 one speed step is sent. **Stop go-to** sends manual mode and then
+   speed the motor had last, so at speed 0 one speed step is sent. **Stop** on the motor controls sends manual mode and then
    STOP, because manual mode leaves the propeller running; the same stop is sent when the motor leaves navigation
-   by itself, unless it reports anchor mode. **Anchor here** switches from navigation to anchor mode once, so the
-   motor holds the boat where it is, without the stop. A lost link stops a go-to that has not started, and nothing is resent after a reconnect. Apart
-   from that and STOP, the chart sends nothing to the motor. It needs the chart file, see [Offline chart](#offline-chart).
+   by itself, unless it reports anchor mode. **Anchor** switches from navigation to anchor mode once, so the
+   motor holds the boat where it is, without the stop. A lost link stops a go-to that has not started, and nothing is resent after a reconnect.
+   While the motor is connected and ready, **motor controls** float above the bottom panel and follow the mode the
+   motor reports: in manual (also when stopped) speed −/+, turn left/right, **Anchor** and **Start** (**Stop** while
+   the propeller runs); in navigation, or while a go-to starts, speed −/+, **Anchor** and **Stop**; in anchor mode
+   **Stop** (manual mode, then STOP) and, when anchoring interrupted a go-to of this app, **Continue navigation**,
+   which asks for a confirmation and starts the rest of it again from the waypoint the motor headed for, with a new
+   upload. Each control sends its command once. Apart from these and STOP, the chart sends nothing to the motor. It needs the chart file, see [Offline chart](#offline-chart).
 4. **Controls** — propulsion commands stay disabled until a type 110 motor was confirmed. The stop
-   command is always available: a STOP button at the top of every screen, and a STOP sign on the chart. While the Bluetooth link is down the chart shows a "no connection" badge instead, which opens the connect screen. Switching to a mode asks for a confirmation.
+   command is always available: a STOP button at the top of every screen, and on the chart a Stop on the motor controls whenever the link to the remote is up, also before the motor answers. The **status badge** at the top right of the chart only shows the state and opens the connect screen: no connection (grey, crossed out; a turning arc while connecting), the remote connected but no motor (amber, with a question mark), or the motor's state (stopped, manual, anchored, navigation) with its speed as a ring of 10 dashes, as Helmsman counts speed steps. Switching to a mode asks for a confirmation.
 5. **Route** — uploads the selected route to the motor and downloads the one stored on it, which can be saved as a new route. Uploading a route never starts the motor.
 6. **Log** — shows the raw traffic in both directions and exports it as text so that it can be
    compared with a capture from the Helmsman application. Every device seen during a scan is

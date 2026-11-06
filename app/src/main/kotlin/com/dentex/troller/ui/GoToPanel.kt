@@ -6,8 +6,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -19,7 +17,6 @@ import androidx.compose.ui.unit.dp
 import com.dentex.troller.chart.BoatPosition
 import com.dentex.troller.chart.ChartStyle
 import com.dentex.troller.haswing.MotorTelemetry
-import com.dentex.troller.haswing.ReportedMode
 import com.dentex.troller.navigation.GoToState
 import com.dentex.troller.navigation.Waypoint
 import com.dentex.troller.navigation.bearingDegrees
@@ -57,7 +54,6 @@ internal fun GoToPanel(
     // A followed route shows the waypoint the motor heads for.
     val target = state.heading(telemetry.targetPoint)
     val route = state.followsRoute && state.phase != GoToState.Phase.IDLE
-    val motorNavigating = telemetry.reportedMode == ReportedMode.NAVIGATION
 
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -103,29 +99,10 @@ internal fun GoToPanel(
                 horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.End),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                when (state.phase) {
-                    GoToState.Phase.IDLE -> Unit
-                    GoToState.Phase.UPLOADING, GoToState.Phase.STARTING, GoToState.Phase.UNDER_WAY -> {
-                        // Anchoring only makes sense once navigation mode was sent.
-                        if (state.phase != GoToState.Phase.UPLOADING) {
-                            TextButton(onClick = actions.anchor) { Text("Anchor here") }
-                        }
-                        Button(
-                            onClick = actions.cancel,
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                                contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                            ),
-                        ) { Text("Stop go-to") }
-                    }
-                    GoToState.Phase.ENDED, GoToState.Phase.FAILED -> {
-                        // The motor may still be navigating, for example after a lost link.
-                        if (motorNavigating) {
-                            TextButton(onClick = actions.anchor) { Text("Anchor here") }
-                            TextButton(onClick = actions.cancel) { Text("End navigation and stop") }
-                        }
-                        TextButton(onClick = actions.dismiss) { Text("OK") }
-                    }
+                // Stop and Anchor are on the motor control bar above, which follows the motor's
+                // mode, also when the motor still navigates after the go-to ended.
+                if (state.phase == GoToState.Phase.ENDED || state.phase == GoToState.Phase.FAILED) {
+                    TextButton(onClick = actions.dismiss) { Text("OK") }
                 }
             }
         }
@@ -154,13 +131,13 @@ internal fun ConfirmGoToDialog(request: GoToRequest, boat: BoatPosition?, onConf
                         "The route stored on the motor is replaced by this route and the motor switches to " +
                         "navigation mode. The boat steers to waypoint ${request.skipped + 1} and on along the route by itself, at the " +
                         "last speed or at speed 1 if it was 0.\n\n" +
-                        "Stop go-to switches the motor to manual and stops it. STOP stays at the top right."
+                        "Stop on the motor controls switches the motor to manual and stops it."
                 } else {
                     targetLine(request.target, boat) + "\n\n" +
                         "The route stored on the motor is replaced by this point and the motor switches to " +
                         "navigation mode. The boat starts moving by itself, at the last speed or at speed 1 if it was 0. " +
                         "Your routes on the phone are not changed.\n\n" +
-                        "Stop go-to switches the motor to manual and stops it. STOP stays at the top right."
+                        "Stop on the motor controls switches the motor to manual and stops it."
                 },
             )
         },

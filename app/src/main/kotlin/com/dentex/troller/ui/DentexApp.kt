@@ -56,7 +56,7 @@ private enum class Destination(
  * Root composable.
  *
  * A single activity with a bottom navigation bar. The emergency stop is on every screen: a STOP
- * button at the top, or a STOP sign on the chart.
+ * button at the top, or Stop on the motor controls of the chart.
  */
 @Composable
 fun DentexApp(viewModel: MainViewModel = viewModel()) {
@@ -108,7 +108,7 @@ fun DentexApp(viewModel: MainViewModel = viewModel()) {
         snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
-            // Controls has its own STOP next to "Motor on", and the chart draws a STOP sign.
+            // Controls has its own STOP next to "Motor on", and the chart has Stop on its motor controls.
             if (destination != Destination.CONTROLS && destination != Destination.CHART) {
                 EmergencyStopButton(
                     onStop = viewModel::requestStop,

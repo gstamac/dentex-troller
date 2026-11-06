@@ -89,6 +89,7 @@ import com.dentex.troller.chart.PhoneFix
 import com.dentex.troller.chart.PositionSource
 import com.dentex.troller.chart.RouteHit
 import com.dentex.troller.haswing.CommandGateState
+import com.dentex.troller.haswing.MotorMode
 import com.dentex.troller.haswing.MotorTelemetry
 import com.dentex.troller.haswing.ReportedMode
 import com.dentex.troller.navigation.GoToState
@@ -129,6 +130,7 @@ fun ChartScreen(viewModel: MainViewModel, onOpenConnect: () -> Unit) {
     val pins by viewModel.pins.collectAsStateWithLifecycle()
     val showPins by viewModel.showPins.collectAsStateWithLifecycle()
     val goToState by viewModel.goToState.collectAsStateWithLifecycle()
+    val resume by viewModel.resumeAfterAnchor.collectAsStateWithLifecycle()
     val gpxImporter = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let(viewModel::importGpx)
     }
@@ -157,14 +159,14 @@ fun ChartScreen(viewModel: MainViewModel, onOpenConnect: () -> Unit) {
         onPickLayer = { picked ->
             if (picked.needs == null || picked.needs in installedKinds) viewModel.setChartLayer(picked) else import()
         },
-        onStop = viewModel::requestStop,
-        link = when {
-            // The transport only accepts writes once the link is ready, so STOP is offered only then.
-            state.connectionState is ConnectionState.Ready -> LinkBadge.STOP
-            state.reconnecting ||
-                state.connectionState is ConnectionState.Connecting ||
-                state.connectionState is ConnectionState.Connected -> LinkBadge.RECONNECTING
-            else -> LinkBadge.NO_CONNECTION
+        status = when {
+            state.connectionState is ConnectionState.Ready ->
+                if (state.commandGate == CommandGateState.READY) MotorStatus.motor(state.telemetry) else MotorStatus.NoMotor
+            else -> MotorStatus.Disconnected(
+                connecting = state.reconnecting ||
+                    state.connectionState is ConnectionState.Connecting ||
+                    state.connectionState is ConnectionState.Connected,
+            )
         },
         onOpenConnect = onOpenConnect,
         savedZoom = viewModel.chartZoom,
@@ -206,6 +208,36 @@ fun ChartScreen(viewModel: MainViewModel, onOpenConnect: () -> Unit) {
             anchor = viewModel::anchorGoTo,
             dismiss = viewModel::dismissGoTo,
         ),
+        // The motor controls show whenever the link can carry a command: the transport only takes
+        // writes once it is ready. Until the motor answers they offer only Stop, which is the
+        // chart's emergency stop, as the status badge at the top right does not stop the motor.
+        motor = ControlSet.of(
+            mode = state.telemetry.reportedMode,
+            goToActive = goToState.active,
+            ready = state.commandGate == CommandGateState.READY,
+        )
+            .takeIf { state.connectionState is ConnectionState.Ready }
+            ?.let { set ->
+                MotorControls(
+                    set = set,
+                    modeName = state.telemetry.reportedMode?.displayName,
+                    speed = state.telemetry.motorSpeed,
+                    propellerOn = state.telemetry.motorOn,
+                    canAnchorNavigation = goToState.phase != GoToState.Phase.UPLOADING ||
+                        state.telemetry.reportedMode == ReportedMode.NAVIGATION,
+                    resume = resume?.let { GoToRequest(it.waypoints, it.name, it.skipped) },
+                    speedDown = viewModel::requestSpeedDown,
+                    speedUp = viewModel::requestSpeedUp,
+                    turnLeft = viewModel::requestTurnLeft,
+                    turnRight = viewModel::requestTurnRight,
+                    start = viewModel::requestMotorOn,
+                    stop = viewModel::requestStop,
+                    anchor = { viewModel.requestMode(MotorMode.ANCHOR) },
+                    stopNavigation = viewModel::cancelGoTo,
+                    anchorNavigation = viewModel::anchorGoTo,
+                    stopInManual = viewModel::stopInManual,
+                )
+            },
     )
 }
 
@@ -239,8 +271,7 @@ private fun ChartView(
     layer: ChartLayer,
     installedKinds: Set<ChartKind>,
     onPickLayer: (ChartLayer) -> Unit,
-    onStop: () -> Unit,
-    link: LinkBadge,
+    status: MotorStatus,
     onOpenConnect: () -> Unit,
     /** The zoom to open at, from the last time; null the first time. */
     savedZoom: Double?,
@@ -250,6 +281,8 @@ private fun ChartView(
     pins: PinOverlay,
     routeActions: RouteActions,
     goTo: GoToActions,
+    /** The motor controls, or null while commands can't go out. */
+    motor: MotorControls?,
 ) {
     val context = LocalContext.current
     val night = isSystemInDarkTheme()
@@ -595,11 +628,7 @@ private fun ChartView(
             horizontalAlignment = Alignment.End,
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            when (link) {
-                LinkBadge.STOP -> StopSignButton(onStop = onStop)
-                LinkBadge.RECONNECTING -> ReconnectingButton(onClick = onOpenConnect)
-                LinkBadge.NO_CONNECTION -> NoConnectionButton(onClick = onOpenConnect)
-            }
+            MotorStatusBadge(status = status, onClick = onOpenConnect)
             LayersMenu(
                 layer = layer,
                 installed = { it.needs == null || it.needs in installedKinds },
@@ -636,6 +665,10 @@ private fun ChartView(
                     onClick = { follow = true },
                     modifier = Modifier.align(Alignment.End),
                 )
+            }
+            // The motor controls sit just above the go-to panel or the info sheet.
+            if (!routeMode && motor != null) {
+                MotorControlBar(controls = motor, onContinue = { confirmGoTo = it })
             }
             if (!routeMode && goToTarget != null) {
                 GoToPanel(
@@ -1014,7 +1047,6 @@ private const val SEAMARK_TAP_DP = 16f
 private const val DRAG_REACH_DP = 28f
 
 /** What the corner badge of the chart offers, following the state of the link to the motor. */
-private enum class LinkBadge { STOP, RECONNECTING, NO_CONNECTION }
 
 /** The depth, or land, at a spot on the chart. */
 private fun spotInfo(m: MapLibreMap, point: LatLng): MapInfo {
