@@ -27,7 +27,6 @@ import com.dentex.troller.navigation.GoToState
 import com.dentex.troller.navigation.GoToTarget
 import com.dentex.troller.navigation.MissionProgress
 import com.dentex.troller.navigation.MissionTransfer
-import com.dentex.troller.navigation.Route
 import com.dentex.troller.navigation.Gpx
 import com.dentex.troller.navigation.PinLibrary
 import com.dentex.troller.navigation.ResumeAfterAnchor
@@ -67,7 +66,6 @@ data class MainUiState(
     val telemetry: MotorTelemetry = MotorTelemetry(),
     val commandGate: CommandGateState = CommandGateState.UNVERIFIED,
     val missionProgress: MissionProgress = MissionProgress(MissionProgress.Phase.IDLE),
-    val downloadedRoute: Route? = null,
     val notice: String? = null,
     /** Name of the remote that the running scan reconnects to when it shows up. */
     val autoConnectTo: String? = null,
@@ -206,15 +204,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     /** Whether the chart draws the pins. Kept across restarts. */
     val showPins: StateFlow<Boolean> = _showPins.asStateFlow()
 
-    /**
-     * The waypoints of the selected route, shared by the route screen and the chart.
-     *
-     * Editing it never talks to the motor; only [uploadRoute] does.
-     */
-    val routeDraft: StateFlow<List<Waypoint>> = _routes
-        .map { it.selected?.waypoints ?: emptyList() }
-        .stateIn(viewModelScope, SharingStarted.Eagerly, _routes.value.selected?.waypoints ?: emptyList())
-
     private var scanJob: Job? = null
 
     private val connectionSettings =
@@ -307,12 +296,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
         viewModelScope.launch {
             mission.progress.collect { progress ->
-                _uiState.update {
-                    it.copy(
-                        missionProgress = progress,
-                        downloadedRoute = mission.downloadedRoute,
-                    )
-                }
+                _uiState.update { it.copy(missionProgress = progress) }
             }
         }
     }
@@ -550,18 +534,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         goTo.anchor()
     }
 
-    /** Uploads a route to the motor. Uploading never starts propulsion. */
-    fun uploadRoute(waypoints: List<Waypoint>) {
-        if (goTo.state.value.active) {
-            notifyUser("A go-to is running. Cancel it before uploading a route.")
-            return
-        }
-        val route = Route(waypoints)
-        if (!mission.startUpload(route)) {
-            notifyUser("The route is empty")
-        }
-    }
-
     /** Appends a waypoint to the selected route, starting a new route when none is selected. */
     fun addWaypoint(waypoint: Waypoint) {
         editRoutes { library ->
@@ -594,11 +566,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         editRoutes { library -> library.editSelected { points -> points.filterIndexed { i, _ -> i != index } } }
     }
 
-    /** Clears the selected route's waypoints. */
-    fun clearRoute() {
-        editRoutes { library -> library.editSelected { emptyList() } }
-    }
-
     /** Starts a new, empty route and selects it. */
     fun newRoute() {
         editRoutes { library -> library.create(newRouteId(), System.currentTimeMillis()) }
@@ -614,15 +581,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun deleteRoute(id: String) {
         editRoutes { library -> library.delete(id) }
-    }
-
-    /** Keeps the route last read from the motor as a new route on the phone. */
-    fun saveDownloadedRoute() {
-        val route = _uiState.value.downloadedRoute ?: return
-        val now = System.currentTimeMillis()
-        val name = "From motor " + java.text.SimpleDateFormat("d MMM HH:mm", Locale.getDefault()).format(java.util.Date(now))
-        editRoutes { library -> library.add(SavedRoute(newRouteId(), name, route.waypoints, now)) }
-        notifyUser("Saved as \"$name\"")
     }
 
     private fun editRoutes(change: (RouteLibrary) -> RouteLibrary) {
@@ -740,16 +698,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 is ChartStore.ImportResult.Failed -> notifyUser(result.reason)
             }
         }
-    }
-
-    /** Downloads the route that is stored on the motor. */
-    fun downloadRoute() {
-        mission.startDownload()
-    }
-
-    /** Cancels a running route transfer. */
-    fun cancelMission() {
-        mission.cancel()
     }
 
     /** Returns the diagnostic log as a text report, with device addresses masked. */

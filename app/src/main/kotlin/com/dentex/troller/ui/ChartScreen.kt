@@ -121,7 +121,7 @@ import kotlin.math.hypot
  * from STOP, is "Move boat here", which asks for a confirmation first.
  */
 @Composable
-fun ChartScreen(viewModel: MainViewModel, onOpenConnect: () -> Unit) {
+fun ChartScreen(viewModel: MainViewModel, onOpenConnect: () -> Unit, onOpenMenu: () -> Unit) {
     val chart by viewModel.chartFile.collectAsStateWithLifecycle()
     val rainbowFile by viewModel.rainbowFile.collectAsStateWithLifecycle()
     val layer by viewModel.chartLayer.collectAsStateWithLifecycle()
@@ -144,7 +144,11 @@ fun ChartScreen(viewModel: MainViewModel, onOpenConnect: () -> Unit) {
 
     val installed = chart
     if (installed == null) {
-        NoChart(path = viewModel.chartPath(), onImport = import, onStop = viewModel::requestStop)
+        // The chart screen has no bottom menu, so the way to the other screens is kept here too.
+        Box(modifier = Modifier.fillMaxSize()) {
+            NoChart(path = viewModel.chartPath(), onImport = import, onStop = viewModel::requestStop)
+            MoreButton(onClick = onOpenMenu, modifier = Modifier.align(Alignment.TopEnd).padding(8.dp))
+        }
         return
     }
 
@@ -169,6 +173,7 @@ fun ChartScreen(viewModel: MainViewModel, onOpenConnect: () -> Unit) {
             )
         },
         onOpenConnect = onOpenConnect,
+        onOpenMenu = onOpenMenu,
         savedZoom = viewModel.chartZoom,
         onZoomSettled = viewModel::saveChartZoom,
         telemetry = state.telemetry,
@@ -270,6 +275,8 @@ private fun ChartView(
     onPickLayer: (ChartLayer) -> Unit,
     status: MotorStatus,
     onOpenConnect: () -> Unit,
+    /** Leaves the chart for the other screens, which have the bottom menu. */
+    onOpenMenu: () -> Unit,
     /** The zoom to open at, from the last time; null the first time. */
     savedZoom: Double?,
     onZoomSettled: (Double) -> Unit,
@@ -671,6 +678,7 @@ private fun ChartView(
                     selectedWaypoint = null
                 },
             )
+            MoreButton(onClick = onOpenMenu)
             if (rainbow != null) RainbowLegend()
             if (!locationAllowed) {
                 FilterChip(
@@ -998,6 +1006,26 @@ private const val MIN_ZOOM = 5.0
 private const val MAX_ZOOM = 16.0
 private const val START_ZOOM = 6.5
 /** A round button with a target sign that centres the chart on the boat again and keeps it there. */
+/** Three dots: opens the dashboard, from where the bottom menu leads to every screen. */
+@Composable
+private fun MoreButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
+    Surface(
+        onClick = onClick,
+        shape = CircleShape,
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
+        shadowElevation = 2.dp,
+        modifier = modifier
+            .size(48.dp)
+            .semantics { contentDescription = "More: open the dashboard and the other screens" },
+    ) {
+        val ink = MaterialTheme.colorScheme.onSurface
+        Canvas(modifier = Modifier.padding(12.dp)) {
+            val w = size.width
+            listOf(0.18f, 0.5f, 0.82f).forEach { y -> drawCircle(ink, radius = w * 0.1f, center = Offset(w / 2, size.height * y)) }
+        }
+    }
+}
+
 @Composable
 private fun FollowBoatButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
     Surface(

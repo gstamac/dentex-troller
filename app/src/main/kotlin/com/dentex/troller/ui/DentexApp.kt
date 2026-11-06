@@ -1,5 +1,6 @@
 package com.dentex.troller.ui
 
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Box
@@ -11,7 +12,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
@@ -44,18 +44,19 @@ private enum class Destination(
     val label: String,
     val icon: ImageVector,
 ) {
+    CHART("Chart", Icons.Default.Place),
     CONNECT("Connect", Icons.Default.Home),
     DASHBOARD("Dashboard", Icons.Default.Info),
-    CHART("Chart", Icons.Default.Place),
     CONTROLS("Controls", Icons.Default.Settings),
-    ROUTE("Route", Icons.Default.LocationOn),
     DIAGNOSTICS("Log", Icons.AutoMirrored.Filled.List),
 }
 
 /**
  * Root composable.
  *
- * A single activity with a bottom navigation bar. The emergency stop is on every screen: a STOP
+ * A single activity with a bottom navigation bar on every screen but the chart, which has the whole
+ * screen and a three-dot button that opens the dashboard. Back on another screen returns to the
+ * chart. The emergency stop is on every screen: a STOP
  * button at the top, or Stop on the motor controls of the chart.
  */
 @Composable
@@ -92,9 +93,12 @@ fun DentexApp(viewModel: MainViewModel = viewModel()) {
         viewModel.clearNotice()
     }
 
+    // The chart has no bottom menu, so Back from any other screen goes back to it.
+    BackHandler(enabled = destination != Destination.CHART) { destination = Destination.CHART }
+
     Scaffold(
         bottomBar = {
-            NavigationBar {
+            if (destination != Destination.CHART) NavigationBar {
                 Destination.entries.forEach { entry ->
                     NavigationBarItem(
                         selected = destination == entry,
@@ -119,9 +123,12 @@ fun DentexApp(viewModel: MainViewModel = viewModel()) {
                 when (destination) {
                     Destination.CONNECT -> ConnectScreen(viewModel)
                     Destination.DASHBOARD -> DashboardScreen(viewModel)
-                    Destination.CHART -> ChartScreen(viewModel, onOpenConnect = { destination = Destination.CONNECT })
+                    Destination.CHART -> ChartScreen(
+                        viewModel,
+                        onOpenConnect = { destination = Destination.CONNECT },
+                        onOpenMenu = { destination = Destination.DASHBOARD },
+                    )
                     Destination.CONTROLS -> ControlsScreen(viewModel)
-                    Destination.ROUTE -> RouteScreen(viewModel)
                     Destination.DIAGNOSTICS -> DiagnosticsScreen(viewModel)
                 }
             }
