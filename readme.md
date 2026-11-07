@@ -85,7 +85,7 @@ AGP 9 compiles the Kotlin sources of the Android modules with its built-in Kotli
 adb pair 192.168.88.101:33977
 ```
 ```bash
-adb connect 192.168.88.101:33199
+adb connect 192.168.88.101:43529
 ```
 
 ```bash
@@ -250,6 +250,45 @@ in one of two ways:
 The area, the contour depths, the zoom levels and the rainbow colours are set in
 [build-chart.sh](tools/charts/build-chart.sh). The depths must match `ChartStyle.DEPTHS` in the
 app, and the rainbow colours must match `ChartStyle.RAINBOW`, which draws the legend.
+
+### Own soundings
+
+Depth soundings from CSV files, such as sonar logs exported from a fishfinder, can be laid over
+EMODnet where they are. Each file needs a header line and the columns `lon,lat,depth` in that
+order (WGS84 decimal degrees, metres below the surface); further columns are ignored. The
+soundings are averaged into cells of `SOUNDINGS_CELL` degrees (default 0.0002, about 20 m), gaps of
+up to `SOUNDINGS_FILL` cells (default 3) between tracks are filled, and EMODnet stays everywhere
+else. Mount the folder with the files at `/soundings`:
+
+```bash
+docker run --rm -v "$PWD/tools/charts/build/data:/data" -v "$PWD/tools/charts/build:/out" \
+  -v "$PWD/my-soundings:/soundings" -e SOUNDINGS="/soundings/*.csv" -e RAINBOW_ZOOM=13 \
+  -e SOUNDINGS_ATTRIBUTION="Own sonar logs" -e BBOX="14.68 44.14 14.91 44.30" dentex/chart-builder
+```
+
+`SOUNDINGS_SIGN=elevation` reads depths that are negative below the surface. `RAINBOW_ZOOM`
+(default 11) sets the deepest zoom of the rainbow tiles; 13 shows a 20 m grid. Only use data you
+are allowed to use, and put its credit in `SOUNDINGS_ATTRIBUTION`.
+
+`DEPTH_SOURCE=soundings` builds the chart from the soundings alone, without EMODnet. Water more
+than `SOUNDINGS_FILL` cells from a sounding gets no depth and stays blank on the chart; land
+and the shoreline come from OpenStreetMap. Without `BBOX` the chart covers the soundings plus
+`SOUNDINGS_MARGIN` degrees (default 0.005, about 500 m) around them. Tracks a few metres apart
+suit 2 m cells:
+
+```bash
+docker run --rm -v "$PWD/tools/charts/build/data:/data" -v "$PWD/tools/charts/build:/out" \
+  -v "$PWD/docs/csv:/soundings:ro" -e DEPTH_SOURCE=soundings -e SOUNDINGS="/soundings/*.csv" \
+  -e SOUNDINGS_CELL=0.00002 -e SOUNDINGS_FILL=8 -e RAINBOW_ZOOM=16 \
+  -e SOUNDINGS_ATTRIBUTION="Own sonar logs" dentex/chart-builder
+```
+
+On Windows, `.\tools\charts\build-from-csv.ps1` does the same in one step: it rebuilds the image
+and builds from every CSV in `docs/csv`. `-Cell`, `-Fill`, `-Zoom`, `-Bbox`, `-Soundings`,
+`-Attribution`, `-Land` and `-Out` change the defaults; `Get-Help` on the script describes them.
+
+When osmdata.openstreetmap.de cannot be reached, `-e LAND=/prev/land.geojsons` builds with the land
+polygons of an earlier build instead (mount its `work` folder at `/prev`); they only cover that build's area.
 
 ## Troubleshooting
 

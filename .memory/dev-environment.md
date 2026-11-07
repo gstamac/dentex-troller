@@ -18,5 +18,10 @@ metadata:
 - No PIL or ImageMagick: draw image mock-ups and resize icons with System.Drawing in PowerShell.
 - The phone's wireless adb port changes between sessions, and the phone is often locked
   (screenshots then show the lock screen). Look it up with `adb devices` each time.
+- Bash heredocs mangle backslashes in inline Python, so write the script to the scratchpad with the
+  Write tool first.
+- Windows PowerShell 5.1 with `$ErrorActionPreference = "Stop"` treats a native tool's stderr (docker
+  progress) as an error. Use `Continue` and check `$LASTEXITCODE`.
+- For docker volume mounts from Git Bash, use `MSYS_NO_PATHCONV=1`, `$(pwd -W)` and `cygpath -w`.
 - `du` over `docs/helmsman` is very slow, so avoid it.
 - The phone is installed over wireless adb; the commands are in the readme.

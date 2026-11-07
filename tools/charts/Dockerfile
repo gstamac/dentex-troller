@@ -19,7 +19,7 @@ RUN rm -f /etc/apt/sources.list.d/*arrow* \
     && apt-get install -y --no-install-recommends osmium-tool \
     && rm -rf /var/lib/apt/lists/*
 
-COPY build-chart.sh seamarks.py /usr/local/bin/
-RUN chmod +x /usr/local/bin/build-chart.sh /usr/local/bin/seamarks.py
+COPY build-chart.sh grid-soundings.sh seamarks.py /usr/local/bin/
+RUN chmod +x /usr/local/bin/build-chart.sh /usr/local/bin/grid-soundings.sh /usr/local/bin/seamarks.py
 
 ENTRYPOINT ["/usr/local/bin/build-chart.sh"]

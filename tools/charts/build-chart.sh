@@ -13,6 +13,22 @@
 #   /out   the .pmtiles files and the intermediate files in /out/work
 #
 # Usage: build-chart.sh [all|chart|rainbow]   (default: all)
+#
+# Own soundings (see grid-soundings.sh) are laid over EMODnet where they are:
+#   SOUNDINGS="/soundings/*.csv"   CSV files with lon,lat,depth (mount their folder at /soundings)
+#   SOUNDINGS_CELL=0.0002          grid cell in degrees (about 20 m)
+#   SOUNDINGS_FILL=3               gaps up to this many cells between tracks are filled
+#   SOUNDINGS_SIGN=depth           or elevation, when the depths are negative below the surface
+#   SOUNDINGS_ATTRIBUTION="..."    the credit shown for them (default: Own soundings)
+#   RAINBOW_ZOOM=11                the deepest zoom of the rainbow tiles; 13 suits 20 m soundings
+#
+# DEPTH_SOURCE=soundings builds the depths from SOUNDINGS alone, without EMODnet: water further
+# than SOUNDINGS_FILL cells from a sounding is left without depth, and land comes from the OSM
+# land polygons. Without BBOX the area is the soundings' extent plus SOUNDINGS_MARGIN degrees
+# (default 0.005, about 500 m).
+#
+# LAND=/path/land.geojsons uses that land polygon file (any OGR format, EPSG:4326) instead of
+# downloading the OSM land polygons, for example the land.geojsons of an earlier build.
 set -euo pipefail
 
 TARGET=${1:-all}
@@ -20,6 +36,24 @@ case "$TARGET" in
     all|chart|rainbow) ;;
     *) echo "usage: build-chart.sh [all|chart|rainbow]" >&2; exit 2 ;;
 esac
+
+SOURCE=${DEPTH_SOURCE:-emodnet}
+case "$SOURCE" in
+    emodnet) ;;
+    soundings)
+        if [[ -z "${SOUNDINGS:-}" ]]; then
+            echo "DEPTH_SOURCE=soundings needs SOUNDINGS" >&2; exit 2
+        fi ;;
+    *) echo "DEPTH_SOURCE must be emodnet or soundings" >&2; exit 2 ;;
+esac
+if [[ -n "${SOUNDINGS:-}" ]]; then
+    # The pattern is expanded here, so it can be passed quoted.
+    # shellcheck disable=SC2206
+    files=( $SOUNDINGS )
+    for file in "${files[@]}"; do
+        [[ -r "$file" ]] || { echo "cannot read soundings file $file" >&2; exit 2; }
+    done
+fi
 
 DATA=/data
 OUT=/out
@@ -33,6 +67,20 @@ DL_XMIN=$XMIN; DL_XMAX=$XMAX
 #   docker run -e BBOX="14.68 44.14 14.91 44.30" ...   (about 18 x 18 km)
 if [[ -n "${BBOX:-}" ]]; then
     read -r XMIN YMIN XMAX YMAX <<< "$BBOX"
+elif [[ "$SOURCE" == soundings ]]; then
+    read -r XMIN YMIN XMAX YMAX < <(for file in "${files[@]}"; do tail -n +2 "$file"; done |
+        tr -d '\r' | awk -F, -v m="${SOUNDINGS_MARGIN:-0.005}" '
+        $1 ~ /^-?[0-9.]+$/ && $2 ~ /^-?[0-9.]+$/ && $3 ~ /^-?[0-9.]+$/ {
+            if (!n++) { w = e = $1; s = t = $2 }
+            if ($1 < w) w = $1; if ($1 > e) e = $1
+            if ($2 < s) s = $2; if ($2 > t) t = $2
+        }
+        END { if (n) printf "%.6f %.6f %.6f %.6f\n", w - m, s - m, e + m, t + m }')
+    if [[ -z "${YMAX:-}" ]]; then
+        echo "no soundings found in $SOUNDINGS" >&2; exit 1
+    fi
+fi
+if [[ -n "${BBOX:-}" || "$SOURCE" == soundings ]]; then
     echo "== area $XMIN $YMIN $XMAX $YMAX"
 fi
 
@@ -46,7 +94,7 @@ ERDDAP="https://erddap.emodnet.eu/erddap/griddap/bathymetry_dtm_2024.nc"
 STRIPS=("39.75 41.30" "41.30 42.85" "42.85 44.40" "44.40 45.85")
 
 echo "== downloads"
-for i in "${!STRIPS[@]}"; do
+[[ "$SOURCE" == soundings ]] || for i in "${!STRIPS[@]}"; do
     file="$DATA/emodnet_$((i + 1)).nc"
     if [[ ! -s "$file" ]]; then
         read -r south north <<< "${STRIPS[$i]}"
@@ -55,10 +103,27 @@ for i in "${!STRIPS[@]}"; do
     fi
 done
 LAND_ZIP="$DATA/land-polygons-split-4326.zip"
-if [[ ! -s "$LAND_ZIP" ]]; then
-    curl -sS -f --retry 3 -o "$LAND_ZIP" https://osmdata.openstreetmap.de/download/land-polygons-split-4326.zip
+LAND_SRC=${LAND:-/vsizip/$LAND_ZIP/land-polygons-split-4326/land_polygons.shp}
+if [[ -z "${LAND:-}" && ! -s "$LAND_ZIP" ]]; then
+    curl -sS -f --retry 3 -o "$LAND_ZIP.part" https://osmdata.openstreetmap.de/download/land-polygons-split-4326.zip
+    mv "$LAND_ZIP.part" "$LAND_ZIP"
 fi
 
+echo "== shoreline"
+rm -f "$WORK/land.geojsons"
+ogr2ogr -f GeoJSONSeq "$WORK/land.geojsons" "$LAND_SRC" \
+    -spat $XMIN $YMIN $XMAX $YMAX -clipsrc spat_extent -select ""
+
+if [[ "$SOURCE" == soundings ]]; then
+echo "== depth grid from soundings only"
+DEPTH="$WORK/depth_soundings.tif"
+grid-soundings.sh none "$DEPTH" "$XMIN $YMIN $XMAX $YMAX" \
+    "${SOUNDINGS_CELL:-0.0002}" "${SOUNDINGS_FILL:-3}" "${files[@]}"
+# Land gets a height of 1 m, as in the EMODnet grid, so the 0 m line runs along the shore where
+# the soundings reach it. Soundings on land (GPS jitter at the shore) give way to it.
+gdal_rasterize -q -burn 1 "$WORK/land.geojsons" "$DEPTH"
+ATTRIBUTION="${SOUNDINGS_ATTRIBUTION:-Own soundings}; OpenStreetMap contributors (ODbL)"
+else
 echo "== depth grid"
 strips=()
 for file in "$DATA"/emodnet_*.nc; do strips+=("NETCDF:\"$file\":elevation"); done
@@ -72,6 +137,15 @@ gdal_calc.py --quiet --hideNoData -A "$WORK/depth.vrt" --outfile="$WORK/depth_fi
     --calc="numpy.where(numpy.isnan(A), 1.0, A)" --type=Float32 --NoDataValue=none \
     --co=TILED=YES --co=COMPRESS=DEFLATE --co=BIGTIFF=IF_SAFER
 DEPTH="$WORK/depth_filled.tif"
+ATTRIBUTION="EMODnet Bathymetry DTM 2024 (CC BY 4.0); OpenStreetMap contributors (ODbL)"
+
+if [[ -n "${SOUNDINGS:-}" ]]; then
+    grid-soundings.sh "$DEPTH" "$WORK/depth_soundings.tif" "$XMIN $YMIN $XMAX $YMAX" \
+        "${SOUNDINGS_CELL:-0.0002}" "${SOUNDINGS_FILL:-3}" "${files[@]}"
+    DEPTH="$WORK/depth_soundings.tif"
+    ATTRIBUTION="${SOUNDINGS_ATTRIBUTION:-Own soundings}; $ATTRIBUTION"
+fi
+fi
 
 if [[ "$TARGET" != rainbow ]]; then
 echo "== depth bands"
@@ -86,11 +160,6 @@ echo "== contour lines"
 gdal_contour -q -a elev -fl $LEVELS -f GPKG "$DEPTH" "$WORK/contours.gpkg"
 ogr2ogr -f GeoJSONSeq "$WORK/depth_contour.geojsons" "$WORK/contours.gpkg" -dialect SQLite \
     -sql "SELECT CAST(-elev AS INTEGER) AS depth, geom FROM contour WHERE elev < 0"
-
-echo "== shoreline"
-ogr2ogr -f GeoJSONSeq "$WORK/land.geojsons" \
-    "/vsizip/$LAND_ZIP/land-polygons-split-4326/land_polygons.shp" \
-    -spat $XMIN $YMIN $XMAX $YMAX -clipsrc spat_extent -select ""
 
 echo "== seamarks"
 # Geofabrik extracts of the countries on the Adriatic, with a rough box each (west south east
@@ -133,7 +202,7 @@ echo "== tiles"
 # every seamark from the zoom its feature asks for, instead of thinning points at low zooms.
 tippecanoe -q -o "$OUT/adriatic.pmtiles" --force -Z5 -z14 -r1 \
     --name "Adriatic depths" \
-    --attribution "EMODnet Bathymetry DTM 2024 (CC BY 4.0); OpenStreetMap contributors (ODbL)" \
+    --attribution "$ATTRIBUTION" \
     --detect-shared-borders --coalesce-densest-as-needed --extend-zooms-if-still-dropping \
     -j '{"depth_contour":["any",[">=","$zoom",11],["in","depth",10,20,50,100,200,500,1000]]}' \
     -L "land:$WORK/land.geojsons" \
@@ -165,9 +234,12 @@ nv      0   0   0   0
 0     206   0  16 255
 9000  206   0  16 255
 COLORS
-# Pixels sit exactly on the zoom 11 tile grid (156543.03392804097 / 2^11 m), so the tiles need no
-# second resampling. The grid is about 115 m, so zoom 11 keeps all of its detail.
-RES=76.43702828517625
+# Pixels sit exactly on the tile grid of the deepest zoom (156543.03392804097 / 2^zoom m), so the
+# tiles need no second resampling. The EMODnet grid is about 115 m, so zoom 11 (76 m) keeps all of
+# its detail; soundings on a 20 m grid want zoom 13.
+ZOOM=${RAINBOW_ZOOM:-11}
+RES=$(awk -v z="$ZOOM" 'BEGIN { printf "%.14f", 156543.03392804097 / 2 ^ z }')
+OVERVIEWS=$(awk -v z="$ZOOM" 'BEGIN { for (f = 2; f <= 2 ^ (z - 5); f *= 2) printf "%d ", f }')
 gdalwarp -q -overwrite -multi -wm 1024 -te $XMIN $YMIN $XMAX $YMAX -te_srs EPSG:4326 -t_srs EPSG:3857 \
     -tr $RES $RES -tap -r bilinear -ot Float32 -dstnodata nan \
     -co TILED=YES -co COMPRESS=DEFLATE -co BIGTIFF=IF_SAFER "$DEPTH" "$WORK/depth_3857.tif"
@@ -176,8 +248,9 @@ gdaldem color-relief -q -alpha -co TILED=YES -co COMPRESS=DEFLATE -co BIGTIFF=IF
 rm -f "$WORK/rainbow.mbtiles"
 gdal_translate -q -of MBTiles -co TILE_FORMAT=WEBP -co QUALITY=80 \
     -co NAME="Adriatic rainbow depths" "$WORK/rainbow_rgba.tif" "$WORK/rainbow.mbtiles"
-# Zooms 10 down to 5.
-gdaladdo -q -r average "$WORK/rainbow.mbtiles" 2 4 8 16 32 64
+# The zooms above it, down to 5.
+# shellcheck disable=SC2086
+gdaladdo -q -r average "$WORK/rainbow.mbtiles" $OVERVIEWS
 pmtiles convert "$WORK/rainbow.mbtiles" "$OUT/adriatic-rainbow.pmtiles"
 ls -l "$OUT/adriatic-rainbow.pmtiles"
 fi

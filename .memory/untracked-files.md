@@ -8,10 +8,7 @@ metadata:
 Never stage these files, even with `git add -A`:
 
 - `docs/Navionics_archive_export.gpx`: it holds the owner's fishing spots.
-- `docs/screen.jpg`
-- `docs/navionics/` and `docs/scannav-decompile/`
-- `icon.png` and `icon2.png`: source art. The app icon was generated from `icon.png` into the mipmap PNGs.
-- `sim-messages.md`
+- `docs/csv/`: depth CSV files. It is gitignored since 2026-11-06.
 
 **Why:** these are private data, or research and vendor material the owner doesn't want in the repo.
 
