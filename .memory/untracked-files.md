@@ -1,6 +1,6 @@
 ---
 name: untracked-files
-description: Local files in the repo that must never be committed (fishing spots GPX, screenshots, icon sources, sim notes)
+description: Local files in the repo that must never be committed (fishing spots GPX, depth CSVs)
 metadata:
   type: project
 ---
