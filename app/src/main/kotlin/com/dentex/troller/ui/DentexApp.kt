@@ -13,6 +13,7 @@ import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Place
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
@@ -47,8 +48,9 @@ private enum class Destination(
     CHART("Chart", Icons.Default.Place),
     CONNECT("Connect", Icons.Default.Home),
     DASHBOARD("Dashboard", Icons.Default.Info),
-    CONTROLS("Controls", Icons.Default.Settings),
+    CONTROLS("Controls", Icons.Default.PlayArrow),
     DIAGNOSTICS("Log", Icons.AutoMirrored.Filled.List),
+    SETTINGS("Settings", Icons.Default.Settings),
 }
 
 /**
@@ -130,6 +132,7 @@ fun DentexApp(viewModel: MainViewModel = viewModel()) {
                     )
                     Destination.CONTROLS -> ControlsScreen(viewModel)
                     Destination.DIAGNOSTICS -> DiagnosticsScreen(viewModel)
+                    Destination.SETTINGS -> SettingsScreen(viewModel)
                 }
             }
         }

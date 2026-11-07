@@ -1,5 +1,7 @@
 package com.dentex.troller.chart
 
+import com.dentex.troller.navigation.Waypoint
+import com.dentex.troller.navigation.distanceMeters
 import java.util.Locale
 
 /**
@@ -103,8 +105,55 @@ object ChartStyle {
     const val LAYER_SEAMARK_NAME = "seamark-name"
     const val LAYER_SEAMARK_LIGHT = "seamark-light"
 
-    /** Every layer that draws seamarks; the layers menu hides them together. */
-    val SEAMARK_LAYERS: List<String> = listOf(LAYER_SEAMARK_DOT, LAYER_SEAMARK_ICON, LAYER_SEAMARK_NAME, LAYER_SEAMARK_LIGHT)
+    /**
+     * Every layer that draws seamarks, with the filter that picks its features. With all
+     * seamarks shown each layer uses this filter; near the boat it is narrowed by [seamarkFilter].
+     */
+    private val SEAMARK_BASE_FILTERS: Map<String, String> = linkedMapOf(
+        LAYER_SEAMARK_DOT to """["match", ["get", "kind"], ["buoy", "beacon", "mooring"], true, false]""",
+        LAYER_SEAMARK_ICON to """["match", ["get", "kind"], [${SEAMARK_ICONS.joinToString(", ") { "\"$it\"" }}], true, false]""",
+        LAYER_SEAMARK_NAME to """["all", ["has", "name"], ["match", ["get", "kind"], ["harbour", "marina"], true, false]]""",
+        LAYER_SEAMARK_LIGHT to """["all", ["has", "light"], ["!", ["match", ["get", "kind"], ["harbour", "marina"], true, false]]]""",
+    )
+
+    /** Every layer that draws seamarks. */
+    val SEAMARK_LAYERS: List<String> = SEAMARK_BASE_FILTERS.keys.toList()
+
+    /** The seamarks still drawn near the boat when the others are hidden: hazards and buoys. */
+    val NEAR_BOAT_KINDS: List<String> = listOf("rock", "wreck", "obstruction", "buoy", "beacon")
+
+    /** Choices for the radius around the boat on the Settings screen, in metres. */
+    val NEAR_BOAT_RADII: List<Int> = listOf(25, 50, 100, 200)
+
+    const val DEFAULT_NEAR_BOAT_RADIUS = 50
+
+    /**
+     * The filter of seamark layer [layerId]. [near] is null to show every seamark; otherwise only
+     * [NEAR_BOAT_KINDS] inside that GeoJSON polygon are drawn, and an empty string draws none,
+     * for when the boat position is unknown.
+     */
+    /**
+     * The centre of the near-the-boat circle: [previous] until the boat has moved more than
+     * [NEAR_BOAT_MOVE_FRACTION] of [radiusMeters] from it. Every new centre makes MapLibre
+     * re-lay the seamark layers, so it is not moved for every position update.
+     */
+    fun nearBoatCentre(previous: Waypoint?, boat: Waypoint?, radiusMeters: Int): Waypoint? = when {
+        boat == null -> previous
+        previous == null -> boat
+        distanceMeters(previous, boat) > radiusMeters * NEAR_BOAT_MOVE_FRACTION -> boat
+        else -> previous
+    }
+
+    /** How far the boat moves, as a fraction of the radius, before the circle follows it. */
+    const val NEAR_BOAT_MOVE_FRACTION = 0.15
+
+    fun seamarkFilter(layerId: String, near: String?): String {
+        val base = requireNotNull(SEAMARK_BASE_FILTERS[layerId]) { "not a seamark layer: $layerId" }
+        if (near == null) return base
+        if (near.isEmpty()) return """["literal", false]"""
+        val kinds = NEAR_BOAT_KINDS.joinToString(", ") { "\"$it\"" }
+        return """["all", $base, ["match", ["get", "kind"], [$kinds], true, false], ["within", $near]]"""
+    }
     const val LAYER_LAND = "land"
     const val LAYER_BOAT_ARROW = "boat-arrow"
     const val LAYER_ROUTE_POINTS = "route-points"
@@ -200,7 +249,6 @@ object ChartStyle {
         // Not a multiple of 5 m; matches isFineContour.
         val fine = """["!=", ["%", ["get", "depth"], 5], 0]"""
         val buoyColors = BUOY_COLORS.entries.joinToString(", ") { (name, color) -> "\"$name\", \"$color\"" }
-        val iconKinds = SEAMARK_ICONS.joinToString(", ") { "\"$it\"" }
         val rainbowSource = rainbowPath?.let {
             """"$SOURCE_RAINBOW": { "type": "raster", "url": ${quote("pmtiles://file://$it")}, "tileSize": 256 },"""
         } ?: ""
@@ -259,22 +307,22 @@ object ChartStyle {
             { "id": "shore", "type": "line", "source": "$SOURCE_CHART", "source-layer": "land",
               "paint": { "line-color": "${p.shore}", "line-width": ["interpolate", ["linear"], ["zoom"], 6, 0.3, 15, 1.4] } },
             { "id": "$LAYER_SEAMARK_DOT", "type": "circle", "source": "$SOURCE_CHART", "source-layer": "seamark",
-              "filter": ["match", ["get", "kind"], ["buoy", "beacon", "mooring"], true, false],
+              "filter": ${seamarkFilter(LAYER_SEAMARK_DOT, null)},
               "paint": { "circle-radius": ["interpolate", ["linear"], ["zoom"], 12, 3, 16, 6],
                 "circle-color": ["match", ["get", "colour"], $buoyColors, "#9a9a9a"],
                 "circle-stroke-color": "#1d2b36", "circle-stroke-width": 1 } },
             { "id": "$LAYER_SEAMARK_ICON", "type": "symbol", "source": "$SOURCE_CHART", "source-layer": "seamark",
-              "filter": ["match", ["get", "kind"], [$iconKinds], true, false],
+              "filter": ${seamarkFilter(LAYER_SEAMARK_ICON, null)},
               "layout": { "icon-image": ["concat", "seamark-", ["get", "kind"]],
                 "icon-size": ["interpolate", ["linear"], ["zoom"], 9, 0.7, 14, 1.0],
                 "icon-allow-overlap": true, "icon-ignore-placement": true } },
             { "id": "$LAYER_SEAMARK_NAME", "type": "symbol", "source": "$SOURCE_CHART", "source-layer": "seamark",
-              "minzoom": 11, "filter": ["all", ["has", "name"], ["match", ["get", "kind"], ["harbour", "marina"], true, false]],
+              "minzoom": 11, "filter": ${seamarkFilter(LAYER_SEAMARK_NAME, null)},
               "layout": { "text-field": ["get", "name"], "text-font": ["$FONT"], "text-size": 12,
                 "text-anchor": "top", "text-offset": [0, 1.0], "text-optional": true },
               "paint": { "text-color": "${p.label}", "text-halo-color": "${p.labelHalo}", "text-halo-width": 1.5 } },
             { "id": "$LAYER_SEAMARK_LIGHT", "type": "symbol", "source": "$SOURCE_CHART", "source-layer": "seamark",
-              "minzoom": 13, "filter": ["all", ["has", "light"], ["!", ["match", ["get", "kind"], ["harbour", "marina"], true, false]]],
+              "minzoom": 13, "filter": ${seamarkFilter(LAYER_SEAMARK_LIGHT, null)},
               "layout": { "text-field": ["get", "light"], "text-font": ["$FONT"], "text-size": 10,
                 "text-anchor": "left", "text-offset": [0.9, 0], "text-optional": true },
               "paint": { "text-color": "$LIGHT_LABEL", "text-halo-color": "${p.labelHalo}", "text-halo-width": 1.5 } },

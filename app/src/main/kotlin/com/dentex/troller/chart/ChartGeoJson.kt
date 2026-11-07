@@ -4,6 +4,9 @@ import com.dentex.troller.navigation.Pin
 import com.dentex.troller.navigation.SavedRoute
 import com.dentex.troller.navigation.Waypoint
 import java.util.Locale
+import kotlin.math.PI
+import kotlin.math.cos
+import kotlin.math.sin
 
 /** GeoJSON for the live chart overlays: the boat and the route being edited. */
 object ChartGeoJson {
@@ -107,6 +110,24 @@ object ChartGeoJson {
         }
         append('"')
     }
+
+    /**
+     * A circle of [radiusMeters] around a position, as a GeoJSON Polygon geometry of [sides]
+     * corners, for a `within` filter. Longitude degrees shrink towards the poles, so they are
+     * scaled by the latitude; that is exact enough for a few hundred metres.
+     */
+    fun circle(latitude: Double, longitude: Double, radiusMeters: Double, sides: Int = 24): String {
+        val dLat = Math.toDegrees(radiusMeters / EARTH_RADIUS_METERS)
+        val dLon = dLat / cos(Math.toRadians(latitude))
+        // The ring is closed: the last coordinate repeats the first.
+        val ring = (0..sides).joinToString(",") { i ->
+            val angle = 2 * PI * (i % sides) / sides
+            coordinate(latitude + dLat * sin(angle), longitude + dLon * cos(angle))
+        }
+        return """{"type":"Polygon","coordinates":[[$ring]]}"""
+    }
+
+    private const val EARTH_RADIUS_METERS = 6_371_000.0
 
     private fun point(latitude: Double, longitude: Double): String =
         """{"type":"Point","coordinates":${coordinate(latitude, longitude)}}"""

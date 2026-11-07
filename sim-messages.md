@@ -16,6 +16,9 @@ sendsim --es cmd position --es value "44.2165,14.7936"
 sendsim --es cmd position --es value "44.2164,14.7937"
 ```
 ```bash
+sendsim --es cmd position --es value "44.2180,14.7959"
+```
+```bash
 sendsim --es cmd mode --es value manual    # as the remote button: manual|anchor|navigation|cruise|record
 ```
 ```bash

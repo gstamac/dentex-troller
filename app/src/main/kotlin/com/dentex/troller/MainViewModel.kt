@@ -10,6 +10,7 @@ import com.dentex.troller.ble.ConnectionState
 import com.dentex.troller.chart.ChartKind
 import com.dentex.troller.chart.ChartLayer
 import com.dentex.troller.chart.ChartStore
+import com.dentex.troller.chart.ChartStyle
 import com.dentex.troller.haswing.CommandGateState
 import com.dentex.troller.haswing.CommandResult
 import com.dentex.troller.haswing.HaswingMotorController
@@ -208,6 +209,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     /** Whether the chart draws the seamarks of the chart file. Kept across restarts. */
     val showSeamarks: StateFlow<Boolean> = _showSeamarks.asStateFlow()
+
+    private val _nearSeamarkRadius = MutableStateFlow(
+        chartSettings.getInt(KEY_NEAR_SEAMARK_RADIUS, ChartStyle.DEFAULT_NEAR_BOAT_RADIUS),
+    )
+
+    /**
+     * Metres around the boat in which hazards and buoys are still drawn while the seamarks are
+     * hidden. Set on the Settings screen and kept across restarts.
+     */
+    val nearSeamarkRadius: StateFlow<Int> = _nearSeamarkRadius.asStateFlow()
 
     private var scanJob: Job? = null
 
@@ -659,6 +670,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         chartSettings.edit().putBoolean(KEY_SHOW_SEAMARKS, show).apply()
     }
 
+    fun setNearSeamarkRadius(meters: Int) {
+        _nearSeamarkRadius.value = meters
+        chartSettings.edit().putInt(KEY_NEAR_SEAMARK_RADIUS, meters).apply()
+    }
+
     private fun editPins(change: (PinLibrary) -> PinLibrary) {
         val updated = _pins.updateAndGet(change)
         viewModelScope.launch(routeSaving) {
@@ -761,6 +777,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         const val KEY_CHART_LAYER = "layer"
         const val KEY_SHOW_PINS = "show_pins"
         const val KEY_SHOW_SEAMARKS = "show_seamarks"
+        const val KEY_NEAR_SEAMARK_RADIUS = "near_seamark_radius"
         const val KEY_CHART_ZOOM = "zoom"
 
         /** A GPX file of pins is a few kilobytes; this only guards against picking the wrong file. */

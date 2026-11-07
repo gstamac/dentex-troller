@@ -127,6 +127,44 @@ class ChartStyleTest {
     }
 
     @Test
+    fun theCircleAroundTheBoatHasTheRadiusInEveryDirection() {
+        val centre = Waypoint(44.2202, 14.7955)
+        val json = ChartGeoJson.circle(centre.latitude, centre.longitude, 50.0, sides = 24)
+        val corners = Regex("""\[(-?[0-9.]+),(-?[0-9.]+)]""").findAll(json)
+            .map { Waypoint(it.groupValues[2].toDouble(), it.groupValues[1].toDouble()) }.toList()
+        assertEquals(25, corners.size)
+        assertEquals(corners.first(), corners.last())
+        corners.forEach { assertEquals(50.0, com.dentex.troller.navigation.distanceMeters(centre, it), 0.2) }
+    }
+
+    @Test
+    fun nearTheBoatOnlyHazardsAndBuoysInsideTheCircleAreDrawn() {
+        val circle = ChartGeoJson.circle(44.2202, 14.7955, 50.0)
+        ChartStyle.SEAMARK_LAYERS.forEach { id ->
+            val all = ChartStyle.seamarkFilter(id, null)
+            val near = ChartStyle.seamarkFilter(id, circle)
+            assertTrue(near.startsWith("""["all", $all, """))
+            assertTrue(near.contains(""""rock", "wreck", "obstruction", "buoy", "beacon""""))
+            assertTrue(near.contains("""["within", $circle]"""))
+            assertEquals("""["literal", false]""", ChartStyle.seamarkFilter(id, ""))
+        }
+    }
+
+    @Test
+    fun theCircleOnlyFollowsTheBoatOnceItHasMovedABit() {
+        val start = Waypoint(44.2202, 14.7955)
+        // 15% of 50 m is 7.5 m; 0.00005° of latitude is about 5.6 m and 0.0001° about 11 m.
+        val close = Waypoint(44.22025, 14.7955)
+        val far = Waypoint(44.2203, 14.7955)
+        assertEquals(start, ChartStyle.nearBoatCentre(null, start, 50))
+        assertEquals(start, ChartStyle.nearBoatCentre(start, close, 50))
+        assertEquals(far, ChartStyle.nearBoatCentre(start, far, 50))
+        // Without a position the last centre stays.
+        assertEquals(start, ChartStyle.nearBoatCentre(start, null, 50))
+        assertNull(ChartStyle.nearBoatCentre(null, null, 50))
+    }
+
+    @Test
     fun aTappedSeamarkIsDescribedWithItsLightAndName() {
         assertEquals("Light · Fl(2) WR 5s\nRt Kremik", ChartStyle.describeSeamark("light", "Rt Kremik", "Fl(2) WR 5s", null))
         assertEquals("Buoy · red", ChartStyle.describeSeamark("buoy", null, null, "red"))

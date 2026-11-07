@@ -105,8 +105,9 @@ import org.maplibre.android.geometry.LatLngBounds
 import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.MapView
 import org.maplibre.android.maps.Style
-import org.maplibre.android.style.layers.Property
-import org.maplibre.android.style.layers.PropertyFactory
+import org.maplibre.android.style.expressions.Expression
+import org.maplibre.android.style.layers.CircleLayer
+import org.maplibre.android.style.layers.SymbolLayer
 import org.maplibre.android.style.sources.GeoJsonSource
 import org.maplibre.geojson.Point
 import kotlinx.coroutines.delay
@@ -132,6 +133,7 @@ fun ChartScreen(viewModel: MainViewModel, onOpenConnect: () -> Unit, onOpenMenu:
     val pins by viewModel.pins.collectAsStateWithLifecycle()
     val showPins by viewModel.showPins.collectAsStateWithLifecycle()
     val showSeamarks by viewModel.showSeamarks.collectAsStateWithLifecycle()
+    val nearSeamarkRadius by viewModel.nearSeamarkRadius.collectAsStateWithLifecycle()
     val goToState by viewModel.goToState.collectAsStateWithLifecycle()
     val resume by viewModel.resumeAfterAnchor.collectAsStateWithLifecycle()
     val gpxImporter = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -200,7 +202,7 @@ fun ChartScreen(viewModel: MainViewModel, onOpenConnect: () -> Unit, onOpenMenu:
             onImport = { gpxImporter.launch(arrayOf("*/*")) },
             onDelete = viewModel::deletePin,
         ),
-        seamarks = SeamarkOverlay(show = showSeamarks, onShow = viewModel::setShowSeamarks),
+        seamarks = SeamarkOverlay(show = showSeamarks, nearRadius = nearSeamarkRadius, onShow = viewModel::setShowSeamarks),
         goTo = GoToActions(
             state = goToState,
             blockedBecause = when {
@@ -270,9 +272,13 @@ internal class PinOverlay(
     val onDelete: (String) -> Unit,
 )
 
-/** Whether the chart draws the seamarks of the chart file, and how to change it. */
+/**
+ * Whether the chart draws every seamark of the chart file, and how to change it. When not, only
+ * hazards and buoys within [nearRadius] metres of the boat are drawn.
+ */
 internal class SeamarkOverlay(
     val show: Boolean,
+    val nearRadius: Int,
     val onShow: (Boolean) -> Unit,
 )
 
@@ -587,11 +593,31 @@ private fun ChartView(
         style?.getSourceAs<GeoJsonSource>(ChartStyle.SOURCE_PINS)
             ?.setGeoJson(ChartGeoJson.pins(if (pins.show) pins.library.pins else emptyList(), selectedPinId))
     }
-    // Hidden seamarks are left out of the style's layers, so they can't be tapped either. Applied
-    // again whenever the style is rebuilt, for example on a layer or day/night change.
-    LaunchedEffect(style, seamarks.show) {
-        val visibility = PropertyFactory.visibility(if (seamarks.show) Property.VISIBLE else Property.NONE)
-        ChartStyle.SEAMARK_LAYERS.forEach { id -> style?.getLayer(id)?.setProperties(visibility) }
+    // With the seamarks hidden, hazards and buoys within the set radius of the boat are still
+    // drawn, by the last known position when the fix is stale. The circle only follows the boat
+    // once it has moved a bit (ChartStyle.nearBoatCentre), as each new filter re-lays the layers.
+    // Filtered-out seamarks can't be tapped either. Applied again whenever the style is rebuilt,
+    // for example on a layer or day/night change.
+    val nearRadius = seamarks.nearRadius
+    val boatAt = position?.let { Waypoint(it.latitude, it.longitude) }
+    val nearCentre = remember(nearRadius) { mutableStateOf<Waypoint?>(null) }
+    LaunchedEffect(boatAt, nearRadius) {
+        nearCentre.value = ChartStyle.nearBoatCentre(nearCentre.value, boatAt, nearRadius)
+    }
+    val centre = nearCentre.value
+    LaunchedEffect(style, seamarks.show, centre, nearRadius) {
+        val near = when {
+            seamarks.show -> null
+            centre == null -> ""
+            else -> ChartGeoJson.circle(centre.latitude, centre.longitude, nearRadius.toDouble())
+        }
+        ChartStyle.SEAMARK_LAYERS.forEach { id ->
+            val filter = Expression.Converter.convert(ChartStyle.seamarkFilter(id, near))
+            when (val layer = style?.getLayer(id)) {
+                is SymbolLayer -> layer.setFilter(filter)
+                is CircleLayer -> layer.setFilter(filter)
+            }
+        }
     }
     val highlightedRoute = tapped?.routeId?.takeIf { !routeMode }?.let { id -> routes.routes.firstOrNull { it.id == id } }
     LaunchedEffect(style, highlightedRoute) {
@@ -881,7 +907,16 @@ private fun LayersMenu(
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Checkbox(checked = seamarks.show, onCheckedChange = null, modifier = Modifier.padding(10.dp))
-                        Text("Seamarks", style = MaterialTheme.typography.bodyMedium)
+                        Column {
+                            Text("Seamarks", style = MaterialTheme.typography.bodyMedium)
+                            if (!seamarks.show) {
+                                Text(
+                                    "Hazards and buoys within ${seamarks.nearRadius} m",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
                     }
                     Row(
                         modifier = Modifier
