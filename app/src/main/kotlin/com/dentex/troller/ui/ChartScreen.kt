@@ -105,6 +105,8 @@ import org.maplibre.android.geometry.LatLngBounds
 import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.MapView
 import org.maplibre.android.maps.Style
+import org.maplibre.android.style.layers.Property
+import org.maplibre.android.style.layers.PropertyFactory
 import org.maplibre.android.style.sources.GeoJsonSource
 import org.maplibre.geojson.Point
 import kotlinx.coroutines.delay
@@ -129,6 +131,7 @@ fun ChartScreen(viewModel: MainViewModel, onOpenConnect: () -> Unit, onOpenMenu:
     val routes by viewModel.routes.collectAsStateWithLifecycle()
     val pins by viewModel.pins.collectAsStateWithLifecycle()
     val showPins by viewModel.showPins.collectAsStateWithLifecycle()
+    val showSeamarks by viewModel.showSeamarks.collectAsStateWithLifecycle()
     val goToState by viewModel.goToState.collectAsStateWithLifecycle()
     val resume by viewModel.resumeAfterAnchor.collectAsStateWithLifecycle()
     val gpxImporter = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -197,6 +200,7 @@ fun ChartScreen(viewModel: MainViewModel, onOpenConnect: () -> Unit, onOpenMenu:
             onImport = { gpxImporter.launch(arrayOf("*/*")) },
             onDelete = viewModel::deletePin,
         ),
+        seamarks = SeamarkOverlay(show = showSeamarks, onShow = viewModel::setShowSeamarks),
         goTo = GoToActions(
             state = goToState,
             blockedBecause = when {
@@ -266,6 +270,12 @@ internal class PinOverlay(
     val onDelete: (String) -> Unit,
 )
 
+/** Whether the chart draws the seamarks of the chart file, and how to change it. */
+internal class SeamarkOverlay(
+    val show: Boolean,
+    val onShow: (Boolean) -> Unit,
+)
+
 @Composable
 private fun ChartView(
     chart: ChartStore.InstalledChart,
@@ -283,6 +293,7 @@ private fun ChartView(
     telemetry: MotorTelemetry,
     routes: RouteLibrary,
     pins: PinOverlay,
+    seamarks: SeamarkOverlay,
     routeActions: RouteActions,
     goTo: GoToActions,
     /** The motor controls, or null while commands can't go out. */
@@ -576,6 +587,12 @@ private fun ChartView(
         style?.getSourceAs<GeoJsonSource>(ChartStyle.SOURCE_PINS)
             ?.setGeoJson(ChartGeoJson.pins(if (pins.show) pins.library.pins else emptyList(), selectedPinId))
     }
+    // Hidden seamarks are left out of the style's layers, so they can't be tapped either. Applied
+    // again whenever the style is rebuilt, for example on a layer or day/night change.
+    LaunchedEffect(style, seamarks.show) {
+        val visibility = PropertyFactory.visibility(if (seamarks.show) Property.VISIBLE else Property.NONE)
+        ChartStyle.SEAMARK_LAYERS.forEach { id -> style?.getLayer(id)?.setProperties(visibility) }
+    }
     val highlightedRoute = tapped?.routeId?.takeIf { !routeMode }?.let { id -> routes.routes.firstOrNull { it.id == id } }
     LaunchedEffect(style, highlightedRoute) {
         style?.getSourceAs<GeoJsonSource>(ChartStyle.SOURCE_ROUTE_HIGHLIGHT)
@@ -670,6 +687,7 @@ private fun ChartView(
                 installed = { it.needs == null || it.needs in installedKinds },
                 onPick = onPickLayer,
                 pins = pins,
+                seamarks = seamarks,
             )
             RouteModeButton(
                 active = routeMode,
@@ -809,6 +827,7 @@ private fun LayersMenu(
     installed: (ChartLayer) -> Boolean,
     onPick: (ChartLayer) -> Unit,
     pins: PinOverlay,
+    seamarks: SeamarkOverlay,
 ) {
     var open by rememberSaveable { mutableStateOf(false) }
     Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -854,6 +873,16 @@ private fun LayersMenu(
                         }
                     }
                     HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .toggleable(value = seamarks.show, role = Role.Checkbox, onValueChange = seamarks.onShow)
+                            .padding(start = 4.dp, end = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Checkbox(checked = seamarks.show, onCheckedChange = null, modifier = Modifier.padding(10.dp))
+                        Text("Seamarks", style = MaterialTheme.typography.bodyMedium)
+                    }
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()

@@ -119,6 +119,14 @@ class ChartStyleTest {
     }
 
     @Test
+    fun theSeamarksToggleCoversEveryLayerThatDrawsThem() {
+        val json = ChartStyle.json("/charts/adriatic.pmtiles", night = false)
+        val seamarkLayers = Regex(""""id": "([^"]+)"[^{}]*"source-layer": "seamark"""")
+            .findAll(json).map { it.groupValues[1] }.toSet()
+        assertEquals(seamarkLayers, ChartStyle.SEAMARK_LAYERS.toSet())
+    }
+
+    @Test
     fun aTappedSeamarkIsDescribedWithItsLightAndName() {
         assertEquals("Light · Fl(2) WR 5s\nRt Kremik", ChartStyle.describeSeamark("light", "Rt Kremik", "Fl(2) WR 5s", null))
         assertEquals("Buoy · red", ChartStyle.describeSeamark("buoy", null, null, "red"))
@@ -141,9 +149,17 @@ class ChartStyleTest {
 
     @Test
     fun everyBandHasItsOwnRange() {
-        assertEquals("0–2 m", ChartStyle.bandLabel(0))
-        assertEquals("30–40 m", ChartStyle.bandLabel(30))
+        assertEquals("0–1 m", ChartStyle.bandLabel(0))
+        assertEquals("30–31 m", ChartStyle.bandLabel(30))
+        assertEquals("149–150 m", ChartStyle.bandLabel(149))
+        assertEquals("150–200 m", ChartStyle.bandLabel(150))
         assertEquals("more than 1250 m", ChartStyle.bandLabel(1250))
+    }
+
+    @Test
+    fun bandsAreOneMetreDownTo150m() {
+        assertEquals((0..150).toList(), ChartStyle.DEPTHS.takeWhile { it <= 150 })
+        assertEquals(listOf(200, 300, 500, 750, 1000, 1250), ChartStyle.DEPTHS.dropWhile { it <= 150 })
     }
 
     @Test
@@ -152,6 +168,25 @@ class ChartStyleTest {
         assertEquals(ChartStyle.DAY.water[7], ChartStyle.bandColor(ChartStyle.DAY, 30))
         assertEquals(ChartStyle.DAY.deep, ChartStyle.bandColor(ChartStyle.DAY, 40))
         assertEquals(ChartStyle.DAY.deep, ChartStyle.bandColor(ChartStyle.DAY, 500))
+    }
+
+    @Test
+    fun oneMetreBandsKeepTheShadeOfTheirDepth() {
+        // The shades start at 0, 2, 5, 10, 15, 20, 25 and 30 m, whatever the band step.
+        assertEquals(ChartStyle.DAY.water[0], ChartStyle.bandColor(ChartStyle.DAY, 1))
+        assertEquals(ChartStyle.DAY.water[1], ChartStyle.bandColor(ChartStyle.DAY, 4))
+        assertEquals(ChartStyle.DAY.water[3], ChartStyle.bandColor(ChartStyle.DAY, 12))
+        assertEquals(ChartStyle.DAY.water[7], ChartStyle.bandColor(ChartStyle.DAY, 39))
+        assertEquals(ChartStyle.NIGHT.water[6], ChartStyle.bandColor(ChartStyle.NIGHT, 27))
+    }
+
+    @Test
+    fun fineContoursAreTheOnesBetweenTheFiveMetreLines() {
+        assertTrue(ChartStyle.isFineContour(3))
+        assertTrue(ChartStyle.isFineContour(149))
+        assertFalse(ChartStyle.isFineContour(0))
+        assertFalse(ChartStyle.isFineContour(35))
+        assertFalse(ChartStyle.isFineContour(125))
     }
 
     @Test

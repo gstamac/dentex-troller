@@ -84,10 +84,17 @@ if [[ -n "${BBOX:-}" || "$SOURCE" == soundings ]]; then
     echo "== area $XMIN $YMIN $XMAX $YMAX"
 fi
 
-# Contour depths in metres. Each band in depth_area starts at one of these depths.
-DEPTHS="0 2 5 10 15 20 25 30 40 50 60 70 80 90 100 125 150 200 300 500 750 1000 1250"
+# Contour depths in metres: every metre down to 150 m, then coarser. Each band in depth_area
+# starts at one of these depths. They must match ChartStyle.DEPTHS in the app.
+DEPTHS="$(seq -s ' ' 0 150) 200 300 500 750 1000 1250"
 # gdal_contour wants elevations in increasing order, so the deepest level comes first.
 LEVELS=$(for d in $DEPTHS; do echo "$d"; done | sort -rn | while read -r d; do printf -- '%s ' "$((-d))"; done)
+# Contour lines by zoom, as the app draws them: the major ones at every zoom, the other 5 m ones
+# from zoom 11 and the 1 m ones from zoom 13 (ChartStyle.FINE_CONTOUR_ZOOM). tippecanoe filters
+# cannot compute depth % 5, so the 5 m levels are listed.
+MAJOR="10,20,50,100,200,500,1000"
+FIVES=$(for d in $DEPTHS; do (( d % 5 == 0 )) && printf '%s,' "$d"; done; true); FIVES=${FIVES%,}
+CONTOUR_FILTER='{"depth_contour":["any",["in","depth",'$MAJOR'],["all",[">=","$zoom",11],["in","depth",'$FIVES']],[">=","$zoom",13]]}'
 
 # NetCDF keeps the float depths; the ERDDAP GeoTIFF output is scaled to 8 bits.
 ERDDAP="https://erddap.emodnet.eu/erddap/griddap/bathymetry_dtm_2024.nc"
@@ -198,13 +205,13 @@ done
 seamarks.py "$WORK/seamark.geojsons" "$WORK"/seamarks_*.geojsons
 
 echo "== tiles"
-# Minor contours only appear from zoom 11; the major ones are kept from the start. -r1 keeps
-# every seamark from the zoom its feature asks for, instead of thinning points at low zooms.
+# Contour lines appear by zoom as CONTOUR_FILTER says. -r1 keeps every seamark from the zoom its
+# feature asks for, instead of thinning points at low zooms.
 tippecanoe -q -o "$OUT/adriatic.pmtiles" --force -Z5 -z14 -r1 \
     --name "Adriatic depths" \
     --attribution "$ATTRIBUTION" \
     --detect-shared-borders --coalesce-densest-as-needed --extend-zooms-if-still-dropping \
-    -j '{"depth_contour":["any",[">=","$zoom",11],["in","depth",10,20,50,100,200,500,1000]]}' \
+    -j "$CONTOUR_FILTER" \
     -L "land:$WORK/land.geojsons" \
     -L "depth_area:$WORK/depth_area.geojsons" \
     -L "depth_contour:$WORK/depth_contour.geojsons" \

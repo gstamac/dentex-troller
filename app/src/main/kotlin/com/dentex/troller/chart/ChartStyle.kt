@@ -18,11 +18,33 @@ import java.util.Locale
  */
 object ChartStyle {
 
-    /** Depths in metres where a band starts; matches `DEPTHS` in the build script. */
-    val DEPTHS: List<Int> = listOf(0, 2, 5, 10, 15, 20, 25, 30, 40, 50, 60, 70, 80, 90, 100, 125, 150, 200, 300, 500, 750, 1000, 1250)
+    /**
+     * Depths in metres where a band starts: every metre down to 150 m, then coarser. Matches
+     * `DEPTHS` in the build script.
+     */
+    val DEPTHS: List<Int> = (0..150).toList() + listOf(200, 300, 500, 750, 1000, 1250)
 
     /** Contours drawn heavier and labelled from a lower zoom. */
     val MAJOR_CONTOURS: List<Int> = listOf(10, 20, 50, 100, 200, 500, 1000)
+
+    /**
+     * Depths where each water shade of a [Palette] starts, shallow first; deeper water is
+     * [Palette.deep]. The shades follow the depth, not the number of bands, so a chart built with
+     * other levels keeps the same colours.
+     */
+    val SHADE_DEPTHS: List<Int> = listOf(0, 2, 5, 10, 15, 20, 25, 30)
+
+    /** Depth past which water takes [Palette.deep]. */
+    const val DEEP_FROM = 40
+
+    /** Contours between the 5 m ones; drawn lighter and only from [FINE_CONTOUR_ZOOM]. */
+    fun isFineContour(depth: Int): Boolean = depth % 5 != 0
+
+    /** Zoom from which the 1 m contours are in the tiles; matches the build script. */
+    const val FINE_CONTOUR_ZOOM = 13
+
+    /** Zoom from which the 1 m contours are labelled. */
+    const val FINE_LABEL_ZOOM = 15
 
     /**
      * Stops of the rainbow ramp: depth in metres and colour, shallow first. They match the colour
@@ -78,6 +100,11 @@ object ChartStyle {
     const val LAYER_RAINBOW = "depth-rainbow"
     const val LAYER_SEAMARK_DOT = "seamark-dot"
     const val LAYER_SEAMARK_ICON = "seamark-icon"
+    const val LAYER_SEAMARK_NAME = "seamark-name"
+    const val LAYER_SEAMARK_LIGHT = "seamark-light"
+
+    /** Every layer that draws seamarks; the layers menu hides them together. */
+    val SEAMARK_LAYERS: List<String> = listOf(LAYER_SEAMARK_DOT, LAYER_SEAMARK_ICON, LAYER_SEAMARK_NAME, LAYER_SEAMARK_LIGHT)
     const val LAYER_LAND = "land"
     const val LAYER_BOAT_ARROW = "boat-arrow"
     const val LAYER_ROUTE_POINTS = "route-points"
@@ -150,8 +177,9 @@ object ChartStyle {
 
     /** Fill colour of the band that starts at [depth]. */
     fun bandColor(palette: Palette, depth: Int): String {
-        val index = DEPTHS.indexOf(depth)
-        return if (index in palette.water.indices) palette.water[index] else palette.deep
+        if (depth >= DEEP_FROM) return palette.deep
+        val index = SHADE_DEPTHS.indexOfLast { it <= depth }
+        return palette.water.getOrNull(index) ?: palette.deep
     }
 
     /** Human readable range of the band that starts at [depth], for example "2–5 m". */
@@ -169,6 +197,8 @@ object ChartStyle {
         val p = if (night) NIGHT else DAY
         val bandColors = DEPTHS.joinToString(", ") { "$it, \"${bandColor(p, it)}\"" }
         val major = MAJOR_CONTOURS.joinToString(", ")
+        // Not a multiple of 5 m; matches isFineContour.
+        val fine = """["!=", ["%", ["get", "depth"], 5], 0]"""
         val buoyColors = BUOY_COLORS.entries.joinToString(", ") { (name, color) -> "\"$name\", \"$color\"" }
         val iconKinds = SEAMARK_ICONS.joinToString(", ") { "\"$it\"" }
         val rainbowSource = rainbowPath?.let {
@@ -202,16 +232,25 @@ object ChartStyle {
             { "id": "$LAYER_DEPTH_AREA", "type": "fill", "source": "$SOURCE_CHART", "source-layer": "depth_area",
               "paint": { "fill-color": ["match", ["get", "depth"], $bandColors, "${p.deep}"], "fill-antialias": false } },
             $rainbowLayer
+            { "id": "contour-fine", "type": "line", "source": "$SOURCE_CHART", "source-layer": "depth_contour",
+              "minzoom": $FINE_CONTOUR_ZOOM, "filter": $fine,
+              "paint": { "line-color": "${p.contour}", "line-opacity": 0.3,
+                "line-width": ["interpolate", ["linear"], ["zoom"], $FINE_CONTOUR_ZOOM, 0.3, 17, 0.7] } },
             { "id": "contour-minor", "type": "line", "source": "$SOURCE_CHART", "source-layer": "depth_contour",
-              "filter": ["match", ["get", "depth"], [$major], false, true],
+              "filter": ["all", ["!", $fine], ["match", ["get", "depth"], [$major], false, true]],
               "paint": { "line-color": "${p.contour}", "line-opacity": 0.45,
                 "line-width": ["interpolate", ["linear"], ["zoom"], 11, 0.4, 15, 0.9] } },
             { "id": "contour-major", "type": "line", "source": "$SOURCE_CHART", "source-layer": "depth_contour",
               "filter": ["match", ["get", "depth"], [$major], true, false],
               "paint": { "line-color": "${p.contour}", "line-opacity": 0.85,
                 "line-width": ["interpolate", ["linear"], ["zoom"], 6, 0.4, 15, 1.5] } },
+            { "id": "contour-label-fine", "type": "symbol", "source": "$SOURCE_CHART", "source-layer": "depth_contour",
+              "minzoom": $FINE_LABEL_ZOOM, "filter": $fine,
+              "layout": { "symbol-placement": "line", "symbol-spacing": 350, "text-field": ["to-string", ["get", "depth"]],
+                "text-font": ["$FONT"], "text-size": 10, "text-keep-upright": true },
+              "paint": { "text-color": "${p.label}", "text-halo-color": "${p.labelHalo}", "text-halo-width": 1.5 } },
             { "id": "contour-label", "type": "symbol", "source": "$SOURCE_CHART", "source-layer": "depth_contour",
-              "minzoom": 11,
+              "minzoom": 11, "filter": ["!", $fine],
               "layout": { "symbol-placement": "line", "symbol-spacing": 350, "text-field": ["to-string", ["get", "depth"]],
                 "text-font": ["$FONT"], "text-size": 11, "text-keep-upright": true },
               "paint": { "text-color": "${p.label}", "text-halo-color": "${p.labelHalo}", "text-halo-width": 1.5 } },
@@ -229,12 +268,12 @@ object ChartStyle {
               "layout": { "icon-image": ["concat", "seamark-", ["get", "kind"]],
                 "icon-size": ["interpolate", ["linear"], ["zoom"], 9, 0.7, 14, 1.0],
                 "icon-allow-overlap": true, "icon-ignore-placement": true } },
-            { "id": "seamark-name", "type": "symbol", "source": "$SOURCE_CHART", "source-layer": "seamark",
+            { "id": "$LAYER_SEAMARK_NAME", "type": "symbol", "source": "$SOURCE_CHART", "source-layer": "seamark",
               "minzoom": 11, "filter": ["all", ["has", "name"], ["match", ["get", "kind"], ["harbour", "marina"], true, false]],
               "layout": { "text-field": ["get", "name"], "text-font": ["$FONT"], "text-size": 12,
                 "text-anchor": "top", "text-offset": [0, 1.0], "text-optional": true },
               "paint": { "text-color": "${p.label}", "text-halo-color": "${p.labelHalo}", "text-halo-width": 1.5 } },
-            { "id": "seamark-light", "type": "symbol", "source": "$SOURCE_CHART", "source-layer": "seamark",
+            { "id": "$LAYER_SEAMARK_LIGHT", "type": "symbol", "source": "$SOURCE_CHART", "source-layer": "seamark",
               "minzoom": 13, "filter": ["all", ["has", "light"], ["!", ["match", ["get", "kind"], ["harbour", "marina"], true, false]]],
               "layout": { "text-field": ["get", "light"], "text-font": ["$FONT"], "text-size": 10,
                 "text-anchor": "left", "text-offset": [0.9, 0], "text-optional": true },

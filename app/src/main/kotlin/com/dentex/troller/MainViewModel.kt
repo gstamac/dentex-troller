@@ -204,6 +204,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     /** Whether the chart draws the pins. Kept across restarts. */
     val showPins: StateFlow<Boolean> = _showPins.asStateFlow()
 
+    private val _showSeamarks = MutableStateFlow(chartSettings.getBoolean(KEY_SHOW_SEAMARKS, true))
+
+    /** Whether the chart draws the seamarks of the chart file. Kept across restarts. */
+    val showSeamarks: StateFlow<Boolean> = _showSeamarks.asStateFlow()
+
     private var scanJob: Job? = null
 
     private val connectionSettings =
@@ -649,6 +654,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         chartSettings.edit().putBoolean(KEY_SHOW_PINS, show).apply()
     }
 
+    fun setShowSeamarks(show: Boolean) {
+        _showSeamarks.value = show
+        chartSettings.edit().putBoolean(KEY_SHOW_SEAMARKS, show).apply()
+    }
+
     private fun editPins(change: (PinLibrary) -> PinLibrary) {
         val updated = _pins.updateAndGet(change)
         viewModelScope.launch(routeSaving) {
@@ -750,6 +760,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         const val KEY_SHOW_RAINBOW = "show_rainbow"
         const val KEY_CHART_LAYER = "layer"
         const val KEY_SHOW_PINS = "show_pins"
+        const val KEY_SHOW_SEAMARKS = "show_seamarks"
         const val KEY_CHART_ZOOM = "zoom"
 
         /** A GPX file of pins is a few kilobytes; this only guards against picking the wrong file. */
