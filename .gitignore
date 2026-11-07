@@ -11,3 +11,5 @@ local.properties
 
 # Depth CSV files; large, never commit them
 docs/csv/
+# Depth contour GeoPackages; large, never commit them
+docs/gpkg/

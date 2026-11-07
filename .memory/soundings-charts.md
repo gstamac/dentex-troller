@@ -31,5 +31,15 @@ Claude proposed three fixes, and the owner hasn't decided yet:
 2. A distinct "no depth" colour.
 3. More shades past 30 m.
 
-**How to apply:** test the tools with generated samples, never with those two files. Ask before
-changing the app colours.
+**The two files in `docs/csv` are not sonar logs** (checked 2026-11-07). `soundings.csv` and
+`soundings_detailed.csv` are points taken from Navionics depth contours. The extent of
+`soundings.csv` matches `docs/gpkg/s.gpkg` (Navionics DEPCNT, source `5G795NG4.nv2`) to four
+decimals in three of the four edges. 75% of its points have the same depth as the point before
+them, as contour-line vertices do. It also covers the whole Adriatic. The `docs/gpkg` files are the
+same Navionics contours as lines. Claude declined to build tiles or a converter from either, because
+Navionics licences forbid extracting and reusing the chart data.
+
+**How to apply:** test the tools with generated samples, never with those two files or with
+`docs/gpkg`. Real sonar logs from the owner's own fishfinder are fine. Before building from a new
+CSV, check whether it is contour points (same extent as a chart product, long runs of equal
+depth). Ask before changing the app colours.

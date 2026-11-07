@@ -85,7 +85,7 @@ AGP 9 compiles the Kotlin sources of the Android modules with its built-in Kotli
 adb pair 192.168.88.101:33977
 ```
 ```bash
-adb connect 192.168.88.101:43529
+adb connect 192.168.88.101:34109
 ```
 
 ```bash
@@ -166,7 +166,7 @@ within range before it answers.
    profile is only reported after a heartbeat with a valid checksum was received.
 3. **Chart** — an offline depth chart of the Adriatic with the boat position and heading from the
    motor telemetry. The chart takes the whole screen, without the bottom menu the other screens have: the
-   **three-dot** button under the route button opens the Dashboard, and Back on any other screen returns to the chart. Tap the chart for the depth, a seamark, a pin or the selected route: a pull-up panel shows its title, and pulled up (drag or tap the title) the details and the distance and bearing from the boat; for a route, to the marked waypoint and its nearest point. A tapped depth or seamark is marked with a ring. A long press always shows the spot itself (its depth or land), ignoring pins, routes and seamarks close to it. The panel runs along the bottom edge and is always there: with nothing tapped it shows the boat (position source, position, heading, speed); dragging it down from its small state goes back to that. The **route** button under the layers button switches route mode: tap the chart to add a waypoint, tap the line between two waypoints to insert one there, tap a waypoint to select it, then drag it to move it or delete it, and tap another route to select it; **Routes** lists every saved route to pick, rename or delete, and **New route** starts one. Routes are saved on the phone automatically. **Pins** in the layers menu shows or hides marked spots, and **Import GPX…** adds the waypoints of a GPX file as pins (for example the markers exported from the Navionics Boating app; ones already there are skipped) and its routes as saved routes. The pin's panel can also delete it. While the motor is connected and ready, the **navigate** button of the motor controls (the blue navigation arrow) moves the boat to the selected pin, seamark or tapped spot, or follows the selected route from its marked waypoint (a tap on a waypoint marks that waypoint and a tap on a section marks the first waypoint of the section, and the waypoints before it are left out). It starts at once, without a confirmation, and the selection stays. While the go-to runs the chart draws a dashed line from the boat to the target, or to the waypoint the motor heads for; there is no go-to panel, and a go-to that fails says why in a snackbar. The
+   **three-dot** button under the route button opens the Dashboard, and Back on any other screen returns to the chart. Tap the chart for the depth, a seamark, a pin or the selected route: a pull-up panel shows its title, and pulled up (drag or tap the title) the details and the distance and bearing from the boat; for a route, to the marked waypoint and its nearest point. A tapped depth or seamark is marked with a ring. A long press always shows the spot itself (its depth or land), ignoring pins, routes and seamarks close to it. The panel runs along the bottom edge and is always there: with nothing tapped it shows the boat (position source, position, heading, speed); dragging it down from its small state goes back to that. The **route** button under the layers button switches route mode: tap the chart to add a waypoint, tap the line between two waypoints to insert one there, tap a waypoint to select it, then drag it to move it or delete it, and tap another route to select it; **Routes** lists every saved route to pick, rename or delete, and **New route** starts one. Routes are saved on the phone automatically. **Seamarks** in the layers menu shows or hides the seamarks of the chart file (hidden ones can't be tapped either), **Pins** shows or hides marked spots, and **Import GPX…** adds the waypoints of a GPX file as pins (for example the markers exported from the Navionics Boating app; ones already there are skipped) and its routes as saved routes. The pin's panel can also delete it. While the motor is connected and ready, the **navigate** button of the motor controls (the blue navigation arrow) moves the boat to the selected pin, seamark or tapped spot, or follows the selected route from its marked waypoint (a tap on a waypoint marks that waypoint and a tap on a section marks the first waypoint of the section, and the waypoints before it are left out). It starts at once, without a confirmation, and the selection stays. While the go-to runs the chart draws a dashed line from the boat to the target, or to the waypoint the motor heads for; there is no go-to panel, and a go-to that fails says why in a snackbar. The
    **layers** button under the status badge picks the chart layer: Default or Rainbow depths. The boat is green when
    the position comes from the motor and light blue when the motor has no recent fix and the
    phone's own GPS is used instead (**Use phone GPS** asks for the permission); it turns grey when
@@ -250,6 +250,14 @@ in one of two ways:
 The area, the contour depths, the zoom levels and the rainbow colours are set in
 [build-chart.sh](tools/charts/build-chart.sh). The depths must match `ChartStyle.DEPTHS` in the
 app, and the rainbow colours must match `ChartStyle.RAINBOW`, which draws the legend.
+
+The depth bands and contour lines are 1 m apart down to 150 m, then at 200, 300, 500, 750, 1000
+and 1250 m. So that the chart stays readable, the contours appear by zoom: the major ones (10, 20,
+50, 100, 200, 500 and 1000 m) at every zoom, the other 5 m ones from zoom 11, and the 1 m ones from
+zoom 13, drawn lighter and labelled from zoom 15. The water shades follow the depth rather than the
+bands, so they are the same as before: eight shades down to 40 m, then the deep colour. On the
+EMODnet grid the 1 m contours are interpolated between cells about 115 m apart, so they are
+smoother than the grid but not more accurate; real 1 m detail needs [own soundings](#own-soundings).
 
 ### Own soundings
 

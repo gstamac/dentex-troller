@@ -1,6 +1,6 @@
 ---
 name: untracked-files
-description: Local files in the repo that must never be committed (fishing spots GPX, depth CSVs)
+description: Local files in the repo that must never be committed (fishing spots GPX, depth CSVs, contour GeoPackages)
 metadata:
   type: project
 ---
@@ -9,6 +9,7 @@ Never stage these files, even with `git add -A`:
 
 - `docs/Navionics_archive_export.gpx`: it holds the owner's fishing spots.
 - `docs/csv/`: depth CSV files. It is gitignored since 2026-11-06.
+- `docs/gpkg/`: depth contour GeoPackages (about 900 MB, Navionics-derived). It is gitignored since 2026-11-07.
 
 **Why:** these are private data, or research and vendor material the owner doesn't want in the repo.
 
