@@ -9,6 +9,7 @@
 - [Satellite layer sources](satellite-layer-sources.md): satellite layer dropped 2026-11-05; Sentinel-2 too coarse, DGU land only, Esri/Google/Bing not offline
 - [Motor controls UI preferences](motor-controls-ui-preferences.md): icon buttons always shown, disabled not hidden; no go-to dialog or panel; chart has no bottom menu; no Route screen; no distance-based route joining
 - [Files never to commit](untracked-files.md): fishing-spot GPX; docs/csv and docs/gpkg gitignored; SonarChart pmtiles and their readme lines
+- [Other motor brands research](other-motor-brands-research.md): Minn Kota BT i-Pilot Link most feasible, QUEST riskier, MotorGuide needs N2K hardware; nothing started
 - [Track recording decisions](track-recording-decisions.md): yellow 2.5 px line; ignore impossible jumps, join sim jumps, no break when still; background recording undecided
 - [Soundings charts](soundings-charts.md): CSV soundings tools; rainbow stays from soundings; shading interpolated since 2026-11-08; still open: no-depth colour, shades past 30 m
 - [OSM land download](osm-land-download.md): osmdata.openstreetmap.de down 2026-11-06/07; LAND fallback covers only the test area
