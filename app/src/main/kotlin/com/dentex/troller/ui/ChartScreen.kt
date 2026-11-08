@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.toggleable
@@ -66,6 +67,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
@@ -85,6 +87,7 @@ import com.dentex.troller.chart.ChartKind
 import com.dentex.troller.chart.ChartLayer
 import com.dentex.troller.chart.ChartStore
 import com.dentex.troller.chart.ChartStyle
+import com.dentex.troller.chart.MapScale
 import com.dentex.troller.chart.PhoneFix
 import com.dentex.troller.chart.PositionSource
 import com.dentex.troller.chart.RouteHit
@@ -314,6 +317,8 @@ private fun ChartView(
     var style by remember { mutableStateOf<Style?>(null) }
     var follow by rememberSaveable { mutableStateOf(true) }
     var tapped by remember { mutableStateOf<MapInfo?>(null) }
+    // Metres per screen pixel at the centre of the map, for the scale line.
+    var metersPerPixel by remember { mutableStateOf<Double?>(null) }
     val currentRoutes by rememberUpdatedState(routes)
     val currentPins by rememberUpdatedState(pins)
     var confirmDeletePin by remember { mutableStateOf<Pin?>(null) }
@@ -412,7 +417,12 @@ private fun ChartView(
             // kept for the next start; following and the start itself never overwrite it.
             var started = false
             var gesture = false
+            val updateScale = {
+                m.cameraPosition.target?.let { metersPerPixel = m.projection.getMetersPerPixelAtLatitude(it.latitude) }
+            }
+            m.addOnCameraMoveListener { updateScale() }
             m.addOnCameraIdleListener {
+                updateScale()
                 val zoom = m.cameraPosition.zoom
                 when {
                     !started -> {
@@ -747,6 +757,7 @@ private fun ChartView(
                     modifier = Modifier.align(Alignment.End),
                 )
             }
+            metersPerPixel?.let { ScaleLine(it, modifier = Modifier.align(Alignment.End)) }
             // The motor controls sit just above the info sheet.
             if (!routeMode && motor != null) {
                 MotorControlBar(controls = motor, navigate = navigateTo, onNavigate = startGoTo)
@@ -1067,10 +1078,42 @@ private fun boatArrow(context: Context, color: String): Bitmap {
 }
 
 private const val MIN_ZOOM = 5.0
-private const val MAX_ZOOM = 16.0
+private const val MAX_ZOOM = 20.0
 private const val START_ZOOM = 6.5
 /** A round button with a target sign that centres the chart on the boat again and keeps it there. */
 /** Three dots: opens the dashboard, from where the bottom menu leads to every screen. */
+/** The longest the scale line is drawn. */
+private val SCALE_MAX_WIDTH = 100.dp
+
+/** A line of a round length in m or km, with end ticks, as on a paper chart. */
+@Composable
+private fun ScaleLine(metersPerPixel: Double, modifier: Modifier = Modifier) {
+    val density = LocalDensity.current
+    val maxPixels = with(density) { SCALE_MAX_WIDTH.toPx() }.toDouble()
+    val scale = MapScale.fit(metersPerPixel, maxPixels) ?: return
+    val width = with(density) { scale.length.toFloat().toDp() }
+    val ink = MaterialTheme.colorScheme.onSurface
+    Surface(
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
+        shape = MaterialTheme.shapes.small,
+        modifier = modifier.semantics { contentDescription = "Scale: ${scale.label}" },
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(text = scale.label, style = MaterialTheme.typography.labelSmall, color = ink)
+            Canvas(modifier = Modifier.width(width).height(6.dp)) {
+                val stroke = 2.dp.toPx()
+                val y = size.height - stroke / 2
+                drawLine(ink, Offset(0f, y), Offset(size.width, y), stroke)
+                drawLine(ink, Offset(stroke / 2, 0f), Offset(stroke / 2, y), stroke)
+                drawLine(ink, Offset(size.width - stroke / 2, 0f), Offset(size.width - stroke / 2, y), stroke)
+            }
+        }
+    }
+}
+
 @Composable
 private fun MoreButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
     Surface(
