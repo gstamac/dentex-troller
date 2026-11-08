@@ -53,10 +53,14 @@ class ChartStyleTest {
     fun bothStylesAreStrictJson() {
         for (night in listOf(false, true)) {
             for (rainbow in listOf(null, "/rainbow.pmtiles")) {
-                val reader = com.google.gson.stream.JsonReader(java.io.StringReader(ChartStyle.json("/chart.pmtiles", night, rainbow)))
-                reader.isLenient = false
-                com.google.gson.internal.Streams.parse(reader)
-                assertEquals(com.google.gson.stream.JsonToken.END_DOCUMENT, reader.peek())
+                for (shaded in listOf(true, false)) {
+                    val reader = com.google.gson.stream.JsonReader(
+                        java.io.StringReader(ChartStyle.json("/chart.pmtiles", night, rainbow, shaded)),
+                    )
+                    reader.isLenient = false
+                    com.google.gson.internal.Streams.parse(reader)
+                    assertEquals(com.google.gson.stream.JsonToken.END_DOCUMENT, reader.peek())
+                }
             }
         }
         // The check itself catches a comment.
@@ -201,21 +205,32 @@ class ChartStyleTest {
     }
 
     @Test
-    fun shallowBandsAreTintedAndDeepWaterIsPlain() {
-        assertEquals(ChartStyle.DAY.water[0], ChartStyle.bandColor(ChartStyle.DAY, 0))
-        assertEquals(ChartStyle.DAY.water[7], ChartStyle.bandColor(ChartStyle.DAY, 30))
-        assertEquals(ChartStyle.DAY.deep, ChartStyle.bandColor(ChartStyle.DAY, 40))
-        assertEquals(ChartStyle.DAY.deep, ChartStyle.bandColor(ChartStyle.DAY, 500))
+    fun theShadesFadeFromShallowToDeepAtFixedDepths() {
+        for (palette in listOf(ChartStyle.DAY, ChartStyle.NIGHT)) {
+            val stops = ChartStyle.depthColorStops(palette)
+            assertEquals(listOf(0, 2, 5, 10, 15, 20, 25, 30, 40), stops.map { it.first })
+            assertEquals(palette.water + palette.deep, stops.map { it.second })
+        }
     }
 
     @Test
-    fun oneMetreBandsKeepTheShadeOfTheirDepth() {
-        // The shades start at 0, 2, 5, 10, 15, 20, 25 and 30 m, whatever the band step.
-        assertEquals(ChartStyle.DAY.water[0], ChartStyle.bandColor(ChartStyle.DAY, 1))
-        assertEquals(ChartStyle.DAY.water[1], ChartStyle.bandColor(ChartStyle.DAY, 4))
-        assertEquals(ChartStyle.DAY.water[3], ChartStyle.bandColor(ChartStyle.DAY, 12))
-        assertEquals(ChartStyle.DAY.water[7], ChartStyle.bandColor(ChartStyle.DAY, 39))
-        assertEquals(ChartStyle.NIGHT.water[6], ChartStyle.bandColor(ChartStyle.NIGHT, 27))
+    fun depthAreasAreShadedByInterpolatingTheirDepth() {
+        val style = ChartStyle.json("/chart.pmtiles", night = false)
+        val stops = ChartStyle.depthColorStops(ChartStyle.DAY).joinToString(", ") { (d, c) -> "$d, \"$c\"" }
+        // to-number copes with depths stored as text; anything unreadable is drawn as deep water.
+        assertTrue(style.contains("""["interpolate", ["linear"], ["to-number", ["get", "depth"], 40], $stops]"""))
+    }
+
+    @Test
+    fun withoutShadingAllWaterIsPlainButTheBandsAndContoursStay() {
+        for ((night, palette) in listOf(false to ChartStyle.DAY, true to ChartStyle.NIGHT)) {
+            val style = ChartStyle.json("/chart.pmtiles", night = night, shaded = false)
+            assertTrue(style.contains(""""fill-color": "${palette.deep}""""))
+            assertFalse(style.contains("\"interpolate\", [\"linear\"], [\"to-number\""))
+            // The band layer stays, as a tap reads the depth from it.
+            assertTrue(style.contains("\"id\": \"${ChartStyle.LAYER_DEPTH_AREA}\""))
+            assertTrue(style.contains("\"source-layer\": \"depth_contour\""))
+        }
     }
 
     @Test

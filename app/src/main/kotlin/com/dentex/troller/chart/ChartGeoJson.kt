@@ -2,6 +2,7 @@ package com.dentex.troller.chart
 
 import com.dentex.troller.navigation.Pin
 import com.dentex.troller.navigation.SavedRoute
+import com.dentex.troller.navigation.Track
 import com.dentex.troller.navigation.Waypoint
 import java.util.Locale
 import kotlin.math.PI
@@ -23,6 +24,23 @@ object ChartGeoJson {
         return """{"type":"FeatureCollection","features":[{"type":"Feature",""" +
             """"properties":{"source":"${position.source.property}","stale":${position.stale}$heading},""" +
             """"geometry":${point(position.latitude, position.longitude)}}]}"""
+    }
+
+    /**
+     * The recorded track, one line per segment. While recording, [tail] (the boat) is joined to
+     * the last point, so the line keeps up with the boat between recorded points.
+     */
+    fun track(track: Track, tail: Waypoint? = null): String {
+        val lines = track.segments.mapIndexed { index, segment ->
+            segment.map { it.latitude to it.longitude } +
+                listOfNotNull(tail?.takeIf { index == track.segments.lastIndex }?.let { it.latitude to it.longitude })
+        }.filter { it.size >= 2 }
+        if (lines.isEmpty()) return EMPTY
+        val coordinates = lines.joinToString(",") { line ->
+            line.joinToString(",", "[", "]") { (latitude, longitude) -> coordinate(latitude, longitude) }
+        }
+        return """{"type":"FeatureCollection","features":[{"type":"Feature","properties":{},""" +
+            """"geometry":{"type":"MultiLineString","coordinates":[$coordinates]}}]}"""
     }
 
     /** The route as one line; empty below two waypoints. */

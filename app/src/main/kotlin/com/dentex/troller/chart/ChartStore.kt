@@ -133,4 +133,7 @@ enum class ChartLayer(val title: String, val needs: ChartKind?) {
 
     /** The rainbow depth raster over the depth bands. */
     RAINBOW("Rainbow depths", ChartKind.RAINBOW),
+
+    /** The contours on plain water, without the depth shading. */
+    LINES("Contour lines only", null),
 }

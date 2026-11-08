@@ -61,6 +61,7 @@ import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -100,6 +101,7 @@ import com.dentex.troller.navigation.MissionProgress
 import com.dentex.troller.navigation.Pin
 import com.dentex.troller.navigation.PinLibrary
 import com.dentex.troller.navigation.RouteLibrary
+import com.dentex.troller.navigation.Track
 import com.dentex.troller.navigation.Waypoint
 import org.maplibre.android.camera.CameraPosition
 import org.maplibre.android.camera.CameraUpdateFactory
@@ -137,6 +139,9 @@ fun ChartScreen(viewModel: MainViewModel, onOpenConnect: () -> Unit, onOpenMenu:
     val showPins by viewModel.showPins.collectAsStateWithLifecycle()
     val showSeamarks by viewModel.showSeamarks.collectAsStateWithLifecycle()
     val nearSeamarkRadius by viewModel.nearSeamarkRadius.collectAsStateWithLifecycle()
+    val track by viewModel.track.collectAsStateWithLifecycle()
+    val recordingTrack by viewModel.recordingTrack.collectAsStateWithLifecycle()
+    val trackTail by viewModel.trackTail.collectAsStateWithLifecycle()
     val goToState by viewModel.goToState.collectAsStateWithLifecycle()
     val resume by viewModel.resumeAfterAnchor.collectAsStateWithLifecycle()
     val gpxImporter = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -206,6 +211,14 @@ fun ChartScreen(viewModel: MainViewModel, onOpenConnect: () -> Unit, onOpenMenu:
             onDelete = viewModel::deletePin,
         ),
         seamarks = SeamarkOverlay(show = showSeamarks, nearRadius = nearSeamarkRadius, onShow = viewModel::setShowSeamarks),
+        track = TrackOverlay(
+            track = track,
+            recording = recordingTrack,
+            tail = trackTail,
+            onStart = viewModel::startTrack,
+            onStop = viewModel::stopTrack,
+            onPosition = viewModel::recordTrackPosition,
+        ),
         goTo = GoToActions(
             state = goToState,
             blockedBecause = when {
@@ -266,6 +279,20 @@ internal class RouteActions(
     val delete: (String) -> Unit,
 )
 
+/**
+ * The recorded track and its recording. [onStart] takes whether to keep the old track;
+ * [onPosition] takes each fresh boat position, with its time in milliseconds.
+ */
+internal class TrackOverlay(
+    val track: Track,
+    val recording: Boolean,
+    /** Where the line runs on to from its last point: the boat's last position that fitted. */
+    val tail: Waypoint?,
+    val onStart: (Boolean) -> Unit,
+    val onStop: () -> Unit,
+    val onPosition: (Double, Double, PositionSource, Long) -> Unit,
+)
+
 /** The pins and what the chart may do with them. */
 internal class PinOverlay(
     val library: PinLibrary,
@@ -303,6 +330,7 @@ private fun ChartView(
     routes: RouteLibrary,
     pins: PinOverlay,
     seamarks: SeamarkOverlay,
+    track: TrackOverlay,
     routeActions: RouteActions,
     goTo: GoToActions,
     /** The motor controls, or null while commands can't go out. */
@@ -317,11 +345,14 @@ private fun ChartView(
     var style by remember { mutableStateOf<Style?>(null) }
     var follow by rememberSaveable { mutableStateOf(true) }
     var tapped by remember { mutableStateOf<MapInfo?>(null) }
-    // Metres per screen pixel at the centre of the map, for the scale line.
+    // Metres per screen pixel at the centre of the map and the zoom, for the scale line.
     var metersPerPixel by remember { mutableStateOf<Double?>(null) }
+    var mapZoom by remember { mutableStateOf<Double?>(null) }
     val currentRoutes by rememberUpdatedState(routes)
     val currentPins by rememberUpdatedState(pins)
     var confirmDeletePin by remember { mutableStateOf<Pin?>(null) }
+    // Starting to record with a track already there asks whether to keep it.
+    var askNewTrack by remember { mutableStateOf(false) }
 
     // The selection the last go-to started from. It stays selected; while it is, a go-to that
     // anchoring interrupted is continued rather than started again from the beginning.
@@ -419,6 +450,7 @@ private fun ChartView(
             var gesture = false
             val updateScale = {
                 m.cameraPosition.target?.let { metersPerPixel = m.projection.getMetersPerPixelAtLatitude(it.latitude) }
+                mapZoom = m.cameraPosition.zoom
             }
             m.addOnCameraMoveListener { updateScale() }
             m.addOnCameraIdleListener {
@@ -569,10 +601,11 @@ private fun ChartView(
         onDispose { map = null }
     }
 
-    LaunchedEffect(map, chart, rainbow, night) {
+    val shaded = layer != ChartLayer.LINES
+    LaunchedEffect(map, chart, rainbow, night, shaded) {
         val m = map ?: return@LaunchedEffect
         style = null
-        val json = ChartStyle.json(chart.file.absolutePath, night, rainbow?.file?.absolutePath)
+        val json = ChartStyle.json(chart.file.absolutePath, night, rainbow?.file?.absolutePath, shaded)
         m.setStyle(Style.Builder().fromJson(json)) { loaded ->
             val palette = if (night) ChartStyle.NIGHT else ChartStyle.DAY
             loaded.addImage(ChartStyle.boatImage(PositionSource.MOTOR), boatArrow(context, palette.boatMotor))
@@ -599,6 +632,23 @@ private fun ChartView(
     }
     // The pin and the route whose info is shown are drawn highlighted.
     val selectedPinId = tapped?.pin?.id?.takeIf { !routeMode }
+    // Fresh positions go to the track; a stale one is where the boat was, not where it is.
+    val freshPosition = position?.takeIf { !it.stale }
+    val freshBoat = freshPosition?.let { Waypoint(it.latitude, it.longitude) }
+    val freshSource = freshPosition?.source
+    val currentTrack by rememberUpdatedState(track)
+    // Also run when recording starts, so the track begins where the boat is then rather than
+    // after its first move.
+    LaunchedEffect(freshBoat, freshSource, track.recording) {
+        if (freshBoat != null && freshSource != null) {
+            currentTrack.onPosition(freshBoat.latitude, freshBoat.longitude, freshSource, System.currentTimeMillis())
+        }
+    }
+    // Never joined to a position the recorder left out as a bad fix, nor to a stale one.
+    val trackTail = track.tail?.takeIf { track.recording && freshBoat != null }
+    LaunchedEffect(style, track.track, trackTail) {
+        style?.getSourceAs<GeoJsonSource>(ChartStyle.SOURCE_TRACK)?.setGeoJson(ChartGeoJson.track(track.track, trackTail))
+    }
     LaunchedEffect(style, pins.library, pins.show, selectedPinId) {
         style?.getSourceAs<GeoJsonSource>(ChartStyle.SOURCE_PINS)
             ?.setGeoJson(ChartGeoJson.pins(if (pins.show) pins.library.pins else emptyList(), selectedPinId))
@@ -732,6 +782,16 @@ private fun ChartView(
                     selectedWaypoint = null
                 },
             )
+            TrackButton(
+                recording = track.recording,
+                onClick = {
+                    when {
+                        track.recording -> track.onStop()
+                        track.track.isEmpty -> track.onStart(true)
+                        else -> askNewTrack = true
+                    }
+                },
+            )
             MoreButton(onClick = onOpenMenu)
             if (rainbow != null) RainbowLegend()
             if (!locationAllowed) {
@@ -757,7 +817,7 @@ private fun ChartView(
                     modifier = Modifier.align(Alignment.End),
                 )
             }
-            metersPerPixel?.let { ScaleLine(it, modifier = Modifier.align(Alignment.End)) }
+            metersPerPixel?.let { ScaleLine(it, zoom = mapZoom, modifier = Modifier.align(Alignment.End)) }
             // The motor controls sit just above the info sheet.
             if (!routeMode && motor != null) {
                 MotorControlBar(controls = motor, navigate = navigateTo, onNavigate = startGoTo)
@@ -783,6 +843,30 @@ private fun ChartView(
             )
         }
         }
+    }
+
+    if (askNewTrack) {
+        AlertDialog(
+            onDismissRequest = { askNewTrack = false },
+            title = { Text("Record track") },
+            text = {
+                Text(
+                    "The last track is ${formatDistance(track.track.lengthMeters)}. Carry on adding to it, " +
+                        "or delete it and start a new one?",
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { track.onStart(true); askNewTrack = false }) { Text("Continue") }
+            },
+            dismissButton = {
+                Row {
+                    TextButton(onClick = { askNewTrack = false }) { Text("Cancel") }
+                    TextButton(onClick = { track.onStart(false); askNewTrack = false }) {
+                        Text("New track", color = MaterialTheme.colorScheme.error)
+                    }
+                }
+            },
+        )
     }
 
     confirmDeletePin?.let { pin ->
@@ -1082,27 +1166,67 @@ private const val MAX_ZOOM = 20.0
 private const val START_ZOOM = 6.5
 /** A round button with a target sign that centres the chart on the boat again and keeps it there. */
 /** Three dots: opens the dashboard, from where the bottom menu leads to every screen. */
+/**
+ * Starts and stops recording the track: a red dot to start; while recording, a red button with
+ * a white square to stop.
+ */
+@Composable
+private fun TrackButton(recording: Boolean, onClick: () -> Unit) {
+    val red = MaterialTheme.colorScheme.error
+    val onRed = MaterialTheme.colorScheme.onError
+    Surface(
+        onClick = onClick,
+        shape = CircleShape,
+        color = if (recording) red else MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
+        shadowElevation = 2.dp,
+        modifier = Modifier
+            .size(48.dp)
+            .semantics { contentDescription = if (recording) "Stop recording the track" else "Record the track" },
+    ) {
+        Canvas(modifier = Modifier.padding(14.dp)) {
+            val w = size.width
+            if (recording) {
+                val side = w * 0.6f
+                drawRect(onRed, topLeft = Offset((w - side) / 2, (size.height - side) / 2), size = Size(side, side))
+            } else {
+                drawCircle(red, radius = w * 0.38f)
+                drawCircle(red, radius = w * 0.5f, style = Stroke(width = w * 0.08f))
+            }
+        }
+    }
+}
+
 /** The longest the scale line is drawn. */
 private val SCALE_MAX_WIDTH = 100.dp
 
-/** A line of a round length in m or km, with end ticks, as on a paper chart. */
+/**
+ * A line of a round length in m or km, with end ticks, as on a paper chart, and the map's [zoom]
+ * level beside the length.
+ */
 @Composable
-private fun ScaleLine(metersPerPixel: Double, modifier: Modifier = Modifier) {
+private fun ScaleLine(metersPerPixel: Double, zoom: Double?, modifier: Modifier = Modifier) {
     val density = LocalDensity.current
     val maxPixels = with(density) { SCALE_MAX_WIDTH.toPx() }.toDouble()
     val scale = MapScale.fit(metersPerPixel, maxPixels) ?: return
     val width = with(density) { scale.length.toFloat().toDp() }
     val ink = MaterialTheme.colorScheme.onSurface
+    val zoomText = zoom?.let { "z" + String.format(Locale.US, "%.1f", it) }
     Surface(
         color = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
         shape = MaterialTheme.shapes.small,
-        modifier = modifier.semantics { contentDescription = "Scale: ${scale.label}" },
+        modifier = modifier.semantics {
+            contentDescription = "Scale: ${scale.label}" + (zoom?.let { ", zoom ${String.format(Locale.US, "%.1f", it)}" } ?: "")
+        },
     ) {
         Column(
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Text(text = scale.label, style = MaterialTheme.typography.labelSmall, color = ink)
+            Text(
+                text = listOfNotNull(scale.label, zoomText).joinToString("  ·  "),
+                style = MaterialTheme.typography.labelSmall,
+                color = ink,
+            )
             Canvas(modifier = Modifier.width(width).height(6.dp)) {
                 val stroke = 2.dp.toPx()
                 val y = size.height - stroke / 2

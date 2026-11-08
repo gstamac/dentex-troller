@@ -30,9 +30,10 @@ object ChartStyle {
     val MAJOR_CONTOURS: List<Int> = listOf(10, 20, 50, 100, 200, 500, 1000)
 
     /**
-     * Depths where each water shade of a [Palette] starts, shallow first; deeper water is
-     * [Palette.deep]. The shades follow the depth, not the number of bands, so a chart built with
-     * other levels keeps the same colours.
+     * Depths where each water shade of a [Palette] is reached, shallow first; between them the
+     * colour fades from one shade to the next, down to [Palette.deep] at [DEEP_FROM]. The shades
+     * follow the depth, not the number of bands, so a chart built with other levels keeps the
+     * same colours.
      */
     val SHADE_DEPTHS: List<Int> = listOf(0, 2, 5, 10, 15, 20, 25, 30)
 
@@ -97,6 +98,7 @@ object ChartStyle {
     const val SOURCE_GO_TO = "go-to"
     const val SOURCE_INFO_MARK = "info-mark"
     const val SOURCE_ROUTE_HIGHLIGHT = "route-highlight"
+    const val SOURCE_TRACK = "track"
 
     const val LAYER_DEPTH_AREA = "depth-area"
     const val LAYER_RAINBOW = "depth-rainbow"
@@ -161,6 +163,7 @@ object ChartStyle {
     const val LAYER_OTHER_ROUTE_LINE = "other-route-line"
     const val LAYER_OTHER_ROUTE_POINT = "other-route-point"
     const val LAYER_PIN = "pin"
+    const val LAYER_TRACK = "track"
     const val IMAGE_PIN = "pin"
 
     /** Arrow image of each position source: "boat-arrow-motor" and "boat-arrow-phone". */
@@ -186,6 +189,8 @@ object ChartStyle {
         val boatMotor: String,
         val boatPhone: String,
         val boatStale: String,
+        /** The recorded track, yellow. */
+        val track: String,
     )
 
     val DAY = Palette(
@@ -204,6 +209,7 @@ object ChartStyle {
         boatMotor = "#2e9e44",
         boatPhone = "#5bb8f0",
         boatStale = "#8a8a8a",
+        track = "#ffd000",
     )
 
     val NIGHT = Palette(
@@ -222,14 +228,16 @@ object ChartStyle {
         boatMotor = "#5fd17a",
         boatPhone = "#8dd0f7",
         boatStale = "#6b6b6b",
+        track = "#ffd83d",
     )
 
-    /** Fill colour of the band that starts at [depth]. */
-    fun bandColor(palette: Palette, depth: Int): String {
-        if (depth >= DEEP_FROM) return palette.deep
-        val index = SHADE_DEPTHS.indexOfLast { it <= depth }
-        return palette.water.getOrNull(index) ?: palette.deep
-    }
+    /**
+     * Depth and colour stops the depth bands are shaded along: each water shade at its
+     * [SHADE_DEPTHS] depth, then [Palette.deep] at [DEEP_FROM]. A band takes the colour
+     * interpolated at the depth it starts, so the shade fades evenly instead of in steps.
+     */
+    fun depthColorStops(palette: Palette): List<Pair<Int, String>> =
+        SHADE_DEPTHS.zip(palette.water) + (DEEP_FROM to palette.deep)
 
     /** Human readable range of the band that starts at [depth], for example "2–5 m". */
     fun bandLabel(depth: Int): String {
@@ -240,11 +248,17 @@ object ChartStyle {
 
     /**
      * Style JSON for the chart stored at [chartPath]. With a [rainbowPath] the rainbow raster
-     * is drawn over the depth bands.
+     * is drawn over the depth bands. Without [shaded] all water is [Palette.deep], so only the
+     * contour lines show the depth; the bands are still drawn, so a tap still finds the depth.
      */
-    fun json(chartPath: String, night: Boolean, rainbowPath: String? = null): String {
+    fun json(chartPath: String, night: Boolean, rainbowPath: String? = null, shaded: Boolean = true): String {
         val p = if (night) NIGHT else DAY
-        val bandColors = DEPTHS.joinToString(", ") { "$it, \"${bandColor(p, it)}\"" }
+        val bandStops = depthColorStops(p).joinToString(", ") { (depth, color) -> "$depth, \"$color\"" }
+        val bandColor = if (shaded) {
+            """["interpolate", ["linear"], ["to-number", ["get", "depth"], $DEEP_FROM], $bandStops]"""
+        } else {
+            "\"${p.deep}\""
+        }
         val major = MAJOR_CONTOURS.joinToString(", ")
         // Not a multiple of 5 m; matches isFineContour.
         val fine = """["!=", ["%", ["get", "depth"], 5], 0]"""
@@ -273,12 +287,13 @@ object ChartStyle {
             "$SOURCE_ROUTE_HIGHLIGHT": { "type": "geojson", "data": { "type": "FeatureCollection", "features": [] } },
             "$SOURCE_OTHER_ROUTES": { "type": "geojson", "data": { "type": "FeatureCollection", "features": [] } },
             "$SOURCE_ROUTE_LINE": { "type": "geojson", "data": { "type": "FeatureCollection", "features": [] } },
-            "$SOURCE_ROUTE_POINTS": { "type": "geojson", "data": { "type": "FeatureCollection", "features": [] } }
+            "$SOURCE_ROUTE_POINTS": { "type": "geojson", "data": { "type": "FeatureCollection", "features": [] } },
+            "$SOURCE_TRACK": { "type": "geojson", "data": { "type": "FeatureCollection", "features": [] } }
           },
           "layers": [
             { "id": "water", "type": "background", "paint": { "background-color": "${p.water[0]}" } },
             { "id": "$LAYER_DEPTH_AREA", "type": "fill", "source": "$SOURCE_CHART", "source-layer": "depth_area",
-              "paint": { "fill-color": ["match", ["get", "depth"], $bandColors, "${p.deep}"], "fill-antialias": false } },
+              "paint": { "fill-color": $bandColor, "fill-antialias": false } },
             $rainbowLayer
             { "id": "contour-fine", "type": "line", "source": "$SOURCE_CHART", "source-layer": "depth_contour",
               "minzoom": $FINE_CONTOUR_ZOOM, "filter": $fine,
@@ -326,6 +341,9 @@ object ChartStyle {
               "layout": { "text-field": ["get", "light"], "text-font": ["$FONT"], "text-size": 10,
                 "text-anchor": "left", "text-offset": [0.9, 0], "text-optional": true },
               "paint": { "text-color": "$LIGHT_LABEL", "text-halo-color": "${p.labelHalo}", "text-halo-width": 1.5 } },
+            { "id": "$LAYER_TRACK", "type": "line", "source": "$SOURCE_TRACK",
+              "layout": { "line-join": "round", "line-cap": "round" },
+              "paint": { "line-color": "${p.track}", "line-width": 2.5 } },
             { "id": "$LAYER_PIN", "type": "symbol", "source": "$SOURCE_PINS",
               "layout": { "icon-image": "$IMAGE_PIN", "icon-anchor": "bottom", "icon-allow-overlap": true,
                 "icon-size": ["case", ["get", "selected"], 1.5, 1.0],

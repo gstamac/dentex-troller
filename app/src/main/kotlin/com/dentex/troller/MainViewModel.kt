@@ -11,6 +11,7 @@ import com.dentex.troller.chart.ChartKind
 import com.dentex.troller.chart.ChartLayer
 import com.dentex.troller.chart.ChartStore
 import com.dentex.troller.chart.ChartStyle
+import com.dentex.troller.chart.PositionSource
 import com.dentex.troller.haswing.CommandGateState
 import com.dentex.troller.haswing.CommandResult
 import com.dentex.troller.haswing.HaswingMotorController
@@ -33,6 +34,9 @@ import com.dentex.troller.navigation.PinLibrary
 import com.dentex.troller.navigation.ResumeAfterAnchor
 import com.dentex.troller.navigation.RouteLibrary
 import com.dentex.troller.navigation.SavedRoute
+import com.dentex.troller.navigation.Track
+import com.dentex.troller.navigation.TrackPoint
+import com.dentex.troller.navigation.TrackRecorder
 import com.dentex.troller.navigation.Waypoint
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -199,6 +203,38 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     /** Marked spots, imported from GPX. Saved after every change. */
     val pins: StateFlow<PinLibrary> = _pins.asStateFlow()
+
+    private val trackStore = TrackStore(application)
+
+    // Its own writer, in order, so the appended points keep their order.
+    private val trackSaving = Dispatchers.IO.limitedParallelism(1)
+    private val _track = MutableStateFlow(trackStore.load())
+
+    /** The boat's recorded track. Kept across restarts. */
+    val track: StateFlow<Track> = _track.asStateFlow()
+
+    private val _recordingTrack = MutableStateFlow(chartSettings.getBoolean(KEY_RECORDING_TRACK, false))
+
+    /** Whether the boat's positions are being added to [track]. Kept across restarts. */
+    val recordingTrack: StateFlow<Boolean> = _recordingTrack.asStateFlow()
+
+    // The next recorded position starts a new segment: after recording starts, and after the app
+    // was opened again while recording, so the line doesn't jump across the time it was closed.
+    private var trackSegmentPending = true
+
+    // Which GPS the last recorded position came from. The motor's and the phone's never agree
+    // exactly, so a switch between them starts a new segment rather than a line between the two.
+    private var lastTrackSource: PositionSource? = null
+
+    private val trackRecorder = TrackRecorder()
+
+    private val _trackTail = MutableStateFlow<Waypoint?>(null)
+
+    /**
+     * While recording, the boat's last position that fitted the track, which the chart joins to
+     * the end of the line; never a bad fix that was left out.
+     */
+    val trackTail: StateFlow<Waypoint?> = _trackTail.asStateFlow()
 
     private val _showPins = MutableStateFlow(chartSettings.getBoolean(KEY_SHOW_PINS, true))
 
@@ -665,6 +701,59 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         chartSettings.edit().putBoolean(KEY_SHOW_PINS, show).apply()
     }
 
+    /**
+     * Starts recording the track. With [keepOld] the new positions are added to the track as a
+     * new segment; otherwise the old track is deleted first.
+     */
+    fun startTrack(keepOld: Boolean) {
+        if (!keepOld) {
+            _track.value = Track()
+            saveTrack { trackStore.replace(Track()) }
+        }
+        trackSegmentPending = true
+        _trackTail.value = null
+        setRecordingTrack(true)
+    }
+
+    fun stopTrack() {
+        setRecordingTrack(false)
+        _trackTail.value = null
+    }
+
+    /**
+     * A fresh position of the boat, from the motor or the phone. Added to the track while
+     * recording, unless it is too close to the last point.
+     */
+    fun recordTrackPosition(latitude: Double, longitude: Double, source: PositionSource, timeMillis: Long) {
+        if (!_recordingTrack.value) return
+        val point = TrackPoint(latitude, longitude, timeMillis)
+        val startSegment = trackSegmentPending || source != lastTrackSource
+        val decision = trackRecorder.decide(_track.value, point, startSegment)
+        if (decision == TrackRecorder.Decision.Ignored) return
+        _trackTail.value = Waypoint(latitude, longitude)
+        if (decision !is TrackRecorder.Decision.Add) return
+        trackSegmentPending = false
+        lastTrackSource = source
+        _track.value = _track.value.add(point, decision.newSegment)
+        val lines = if (decision.newSegment) listOf(Track.SEGMENT, Track.pointLine(point)) else listOf(Track.pointLine(point))
+        saveTrack { trackStore.append(lines) }
+    }
+
+    private fun setRecordingTrack(recording: Boolean) {
+        _recordingTrack.value = recording
+        chartSettings.edit().putBoolean(KEY_RECORDING_TRACK, recording).apply()
+    }
+
+    private fun saveTrack(write: () -> Unit) {
+        viewModelScope.launch(trackSaving) {
+            try {
+                write()
+            } catch (error: Exception) {
+                notifyUser("The track could not be saved: ${error.message}")
+            }
+        }
+    }
+
     fun setShowSeamarks(show: Boolean) {
         _showSeamarks.value = show
         chartSettings.edit().putBoolean(KEY_SHOW_SEAMARKS, show).apply()
@@ -777,6 +866,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         const val KEY_CHART_LAYER = "layer"
         const val KEY_SHOW_PINS = "show_pins"
         const val KEY_SHOW_SEAMARKS = "show_seamarks"
+        const val KEY_RECORDING_TRACK = "recording_track"
         const val KEY_NEAR_SEAMARK_RADIUS = "near_seamark_radius"
         const val KEY_CHART_ZOOM = "zoom"
 

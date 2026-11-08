@@ -41,6 +41,9 @@ status badge. A go-to now starts straight from the navigate button, with no dial
 has been seen on the phone screen or tried with the motor yet. Anchor is now also sent from cruise
 and other modes (mode 12), which is untested.
 
+On 2026-11-08 the owner tried track recording, the scale line and zoom 20 in the sim build on the
+phone ([[track-recording-decisions]]). Track recording with the real motor GPS outdoors is untested.
+
 The `simulator` module (sim build, 2026-11-05) models these observations. When a field test
 shows different motor behaviour, change `SimulatedMotor` and its tests to match, so land tests stay
 honest.

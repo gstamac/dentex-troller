@@ -31,6 +31,10 @@ Claude proposed three fixes, and the owner hasn't decided yet:
 2. A distinct "no depth" colour.
 3. More shades past 30 m.
 
+On 2026-11-08 the owner chose `interpolate` for the band colours: they now fade evenly between the
+same 8 shades (still ending at `deep` from 40 m), and any depth value gets a colour. Options 2 and 3
+are still open. The layers menu also has **Contour lines only** (plain water).
+
 **The two files in `docs/csv` are not sonar logs** (checked 2026-11-07). `soundings.csv` and
 `soundings_detailed.csv` are points taken from Navionics depth contours. The extent of
 `soundings.csv` matches `docs/gpkg/s.gpkg` (Navionics DEPCNT, source `5G795NG4.nv2`) to four
