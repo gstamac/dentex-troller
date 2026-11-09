@@ -61,7 +61,6 @@ import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -1166,36 +1165,6 @@ private const val MAX_ZOOM = 20.0
 private const val START_ZOOM = 6.5
 /** A round button with a target sign that centres the chart on the boat again and keeps it there. */
 /** Three dots: opens the dashboard, from where the bottom menu leads to every screen. */
-/**
- * Starts and stops recording the track: a red dot to start; while recording, a red button with
- * a white square to stop.
- */
-@Composable
-private fun TrackButton(recording: Boolean, onClick: () -> Unit) {
-    val red = MaterialTheme.colorScheme.error
-    val onRed = MaterialTheme.colorScheme.onError
-    Surface(
-        onClick = onClick,
-        shape = CircleShape,
-        color = if (recording) red else MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
-        shadowElevation = 2.dp,
-        modifier = Modifier
-            .size(48.dp)
-            .semantics { contentDescription = if (recording) "Stop recording the track" else "Record the track" },
-    ) {
-        Canvas(modifier = Modifier.padding(14.dp)) {
-            val w = size.width
-            if (recording) {
-                val side = w * 0.6f
-                drawRect(onRed, topLeft = Offset((w - side) / 2, (size.height - side) / 2), size = Size(side, side))
-            } else {
-                drawCircle(red, radius = w * 0.38f)
-                drawCircle(red, radius = w * 0.5f, style = Stroke(width = w * 0.08f))
-            }
-        }
-    }
-}
-
 /** The longest the scale line is drawn. */
 private val SCALE_MAX_WIDTH = 100.dp
 
