@@ -45,6 +45,14 @@ import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material3.Icon
+import androidx.compose.material.icons.filled.Menu
+import androidx.compose.foundation.layout.offset
+import androidx.compose.ui.unit.IntOffset
+import kotlin.math.roundToInt
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -193,7 +201,6 @@ fun ChartScreen(viewModel: MainViewModel, onOpenConnect: () -> Unit, onOpenMenu:
         routeActions = RouteActions(
             editable = editable,
             add = viewModel::addWaypoint,
-            removeLast = viewModel::removeLastWaypoint,
             removeAt = viewModel::removeWaypoint,
             insert = viewModel::insertWaypoint,
             move = viewModel::moveWaypoint,
@@ -268,7 +275,6 @@ fun ChartScreen(viewModel: MainViewModel, onOpenConnect: () -> Unit, onOpenMenu:
 internal class RouteActions(
     val editable: Boolean,
     val add: (Waypoint) -> Unit,
-    val removeLast: () -> Unit,
     val removeAt: (Int) -> Unit,
     val insert: (Int, Waypoint) -> Unit,
     val move: (Int, Waypoint) -> Unit,
@@ -276,7 +282,14 @@ internal class RouteActions(
     val select: (String?) -> Unit,
     val rename: (String, String) -> Unit,
     val delete: (String) -> Unit,
-)
+) {
+    /** The same actions, with [select] also calling [then] for the route picked. */
+    fun onSelect(then: (String) -> Unit) = RouteActions(
+        editable, add, removeAt, insert, move, newRoute,
+        select = { id -> select(id); id?.let(then) },
+        rename, delete,
+    )
+}
 
 /**
  * The recorded track and its recording. [onStart] takes whether to keep the old track;
@@ -347,9 +360,12 @@ private fun ChartView(
     // Metres per screen pixel at the centre of the map and the zoom, for the scale line.
     var metersPerPixel by remember { mutableStateOf<Double?>(null) }
     var mapZoom by remember { mutableStateOf<Double?>(null) }
+    // Counts camera moves, so what sits on a chart position (the waypoint's trash button) follows.
+    var cameraMoves by remember { mutableStateOf(0) }
     val currentRoutes by rememberUpdatedState(routes)
     val currentPins by rememberUpdatedState(pins)
     var confirmDeletePin by remember { mutableStateOf<Pin?>(null) }
+    var confirmDeleteWaypoint by remember { mutableStateOf<Int?>(null) }
     // Starting to record with a track already there asks whether to keep it.
     var askNewTrack by remember { mutableStateOf(false) }
 
@@ -370,6 +386,18 @@ private fun ChartView(
 
     // Route mode: taps edit routes instead of showing the depth.
     var routeMode by rememberSaveable { mutableStateOf(false) }
+    // The route to zoom to, with when it was asked for, so picking the same route again zooms again.
+    var fitRoute by remember { mutableStateOf<Pair<String, Long>?>(null) }
+    // The Routes list, from the menu button under the route button.
+    var showRoutes by remember { mutableStateOf(false) }
+    if (showRoutes) {
+        // A route picked from the list is zoomed to; one tapped on the chart is on screen already.
+        RoutesDialog(
+            routes = routes,
+            actions = routeActions.onSelect { id -> fitRoute = id to System.nanoTime() },
+            onDismiss = { showRoutes = false },
+        )
+    }
     var selectedWaypoint by remember { mutableStateOf<Int?>(null) }
     val waypoints = routes.selected?.waypoints ?: emptyList()
     LaunchedEffect(routes.selectedId) { selectedWaypoint = null }
@@ -450,6 +478,7 @@ private fun ChartView(
             val updateScale = {
                 m.cameraPosition.target?.let { metersPerPixel = m.projection.getMetersPerPixelAtLatitude(it.latitude) }
                 mapZoom = m.cameraPosition.zoom
+                cameraMoves++
             }
             m.addOnCameraMoveListener { updateScale() }
             m.addOnCameraIdleListener {
@@ -723,6 +752,32 @@ private fun ChartView(
     LaunchedEffect(style, markedSpot) {
         style?.getSourceAs<GeoJsonSource>(ChartStyle.SOURCE_INFO_MARK)?.setGeoJson(ChartGeoJson.mark(markedSpot))
     }
+    // Zooms to a route picked from the Routes list, clear of the buttons and the route panel, and
+    // stops following the boat so the chart stays on the route. Very short routes stop at
+    // ROUTE_FIT_MAX_ZOOM rather than filling the screen.
+    LaunchedEffect(map, fitRoute) {
+        val m = map ?: return@LaunchedEffect
+        val id = fitRoute?.first ?: return@LaunchedEffect
+        val points = currentRoutes.routes.firstOrNull { it.id == id }?.waypoints ?: return@LaunchedEffect
+        if (points.isEmpty()) return@LaunchedEffect
+        follow = false
+        val target = if (points.size == 1) {
+            CameraPosition.Builder()
+                .target(LatLng(points[0].latitude, points[0].longitude))
+                .zoom(maxOf(m.cameraPosition.zoom, FOLLOW_ZOOM))
+                .build()
+        } else {
+            val bounds = LatLngBounds.Builder().apply { points.forEach { include(LatLng(it.latitude, it.longitude)) } }.build()
+            val density = context.resources.displayMetrics.density
+            val padding = intArrayOf(32, 80, 80, 240).map { (it * density).toInt() }.toIntArray()
+            val fitted = m.getCameraForLatLngBounds(bounds, padding) ?: return@LaunchedEffect
+            CameraPosition.Builder()
+                .target(fitted.target)
+                .zoom(minOf(fitted.zoom, ROUTE_FIT_MAX_ZOOM))
+                .build()
+        }
+        m.animateCamera(CameraUpdateFactory.newCameraPosition(target), FOLLOW_ANIMATION_MILLIS)
+    }
     LaunchedEffect(map, follow, latitude, longitude) {
         val m = map ?: return@LaunchedEffect
         if (!follow || latitude == null || longitude == null) return@LaunchedEffect
@@ -738,6 +793,34 @@ private fun ChartView(
 
     Box(modifier = Modifier.fillMaxSize()) {
         AndroidView(factory = { mapView }, modifier = Modifier.fillMaxSize())
+
+        // A trash button beside the selected waypoint deletes it; tapping elsewhere deselects it.
+        // Hidden while the waypoint is dragged.
+        val deletable = shownWaypoint?.takeIf { routeMode && dragged == null }
+        val deleteAt = remember(map, deletable, waypoints, cameraMoves) {
+            val m = map
+            val point = deletable?.let { waypoints.getOrNull(it) }
+            if (m == null || point == null) null else m.projection.toScreenLocation(LatLng(point.latitude, point.longitude))
+        }
+        if (deletable != null && deleteAt != null) {
+            val density = LocalDensity.current
+            val gap = with(density) { WAYPOINT_DELETE_GAP.toPx() }
+            val side = with(density) { WAYPOINT_DELETE_SIZE.toPx() }
+            Surface(
+                onClick = { confirmDeleteWaypoint = deletable },
+                enabled = routeActions.editable,
+                shape = CircleShape,
+                color = MaterialTheme.colorScheme.errorContainer,
+                contentColor = MaterialTheme.colorScheme.onErrorContainer,
+                shadowElevation = 3.dp,
+                modifier = Modifier
+                    .offset { IntOffset((deleteAt.x + gap).roundToInt(), (deleteAt.y - gap - side).roundToInt()) }
+                    .size(WAYPOINT_DELETE_SIZE)
+                    .semantics { contentDescription = "Delete waypoint ${deletable + 1}" },
+            ) {
+                Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.padding(8.dp))
+            }
+        }
 
         Column(
             modifier = Modifier.align(Alignment.TopStart).padding(8.dp).widthIn(max = 230.dp),
@@ -787,6 +870,13 @@ private fun ChartView(
                     selectedWaypoint = null
                 },
             )
+            if (routeMode) {
+                RouteToolButton(Icons.Default.Menu, "Routes: pick, rename or delete") { showRoutes = true }
+                RouteToolButton(Icons.Default.Add, "New route", enabled = routeActions.editable) {
+                    routeActions.newRoute()
+                    selectedWaypoint = null
+                }
+            }
             TrackButton(
                 recording = track.recording,
                 onClick = {
@@ -832,7 +922,6 @@ private fun ChartView(
                     routes = routes,
                     selectedWaypoint = shownWaypoint,
                     actions = routeActions,
-                    onDeselectWaypoint = { selectedWaypoint = null },
                 )
             }
         }
@@ -889,6 +978,26 @@ private fun ChartView(
                 ) { Text("Delete", color = MaterialTheme.colorScheme.error) }
             },
             dismissButton = { TextButton(onClick = { confirmDeletePin = null }) { Text("Cancel") } },
+        )
+    }
+    // The trash button by a selected waypoint asks first.
+    confirmDeleteWaypoint?.let { index ->
+        val point = waypoints.getOrNull(index)
+        AlertDialog(
+            onDismissRequest = { confirmDeleteWaypoint = null },
+            title = { Text("Delete waypoint ${index + 1}?") },
+            text = { point?.let { Text(ChartStyle.formatPosition(it.latitude, it.longitude)) } },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        if (point != null) routeActions.removeAt(index)
+                        selectedWaypoint = null
+                        confirmDeleteWaypoint = null
+                    },
+                    enabled = routeActions.editable,
+                ) { Text("Delete", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = { TextButton(onClick = { confirmDeleteWaypoint = null }) { Text("Cancel") } },
         )
     }
 }
@@ -1174,7 +1283,7 @@ private const val MIN_ZOOM = 5.0
 private const val MAX_ZOOM = 20.0
 private const val START_ZOOM = 6.5
 /** A round button with a target sign that centres the chart on the boat again and keeps it there. */
-/** Three dots: opens the dashboard, from where the bottom menu leads to every screen. */
+/** Three dots: opens Settings, from where the bottom menu leads to every screen. */
 /** The longest the scale line is drawn. */
 private val SCALE_MAX_WIDTH = 100.dp
 
@@ -1226,7 +1335,7 @@ private fun MoreButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
         shadowElevation = 2.dp,
         modifier = modifier
             .size(48.dp)
-            .semantics { contentDescription = "More: open the dashboard and the other screens" },
+            .semantics { contentDescription = "More: open Settings and the other screens" },
     ) {
         val ink = MaterialTheme.colorScheme.onSurface
         Canvas(modifier = Modifier.padding(12.dp)) {
@@ -1264,6 +1373,10 @@ private fun FollowBoatButton(onClick: () -> Unit, modifier: Modifier = Modifier)
 }
 
 private const val FOLLOW_ZOOM = 13.0
+private const val ROUTE_FIT_MAX_ZOOM = 17.0
+/** The trash button by a selected waypoint, up and to the right of it, clear of the finger. */
+private val WAYPOINT_DELETE_SIZE = 40.dp
+private val WAYPOINT_DELETE_GAP = 10.dp
 private const val START_LATITUDE = 43.6
 private const val START_LONGITUDE = 15.6
 private const val FOLLOW_ANIMATION_MILLIS = 500

@@ -14,7 +14,7 @@ These preferences come from the owner's requests on 2026-11-06:
 - There are no "Move boat here" or "Follow route" buttons in the info sheet. The navigate button takes the selection, or continues a go-to that anchoring interrupted.
 - The selection (pin, route) must survive starting, stopping and anchoring a go-to.
 - The top-right badge only shows status and doesn't stop the motor. Manual is drawn as a propeller.
-- The chart screen has no bottom menu. A three-dot button under the route button opens the Dashboard. The other screens keep the bottom menu, but without a Chart entry (removed
+- The chart screen has no bottom menu. A three-dot button under the track button opens Settings, the first tab (2026-11-09). The other screens keep the bottom menu, but without a Chart entry (removed
   2026-11-09). They slide in over the chart from the right, like Google Maps settings, and an X at
   the top right (or Back) slides them away; the chart stays alive underneath.
 - Connect is a popup, not a screen (2026-11-09): the chart's status badge opens it, and so does

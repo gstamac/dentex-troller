@@ -5,7 +5,9 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -34,7 +36,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
@@ -50,9 +52,7 @@ internal fun RoutePanel(
     routes: RouteLibrary,
     selectedWaypoint: Int?,
     actions: RouteActions,
-    onDeselectWaypoint: () -> Unit,
 ) {
-    var showList by remember { mutableStateOf(false) }
     val route = routes.selected
     val count = route?.waypoints?.size ?: 0
 
@@ -75,7 +75,8 @@ internal fun RoutePanel(
                         text = when {
                             !actions.editable -> "A route is being uploaded; editing is paused."
                             route == null -> "Tap the chart to start a new route."
-                            selectedWaypoint != null -> "Waypoint ${selectedWaypoint + 1} of $count selected. Drag it to move it."
+                            selectedWaypoint != null ->
+                                "Waypoint ${selectedWaypoint + 1} of $count selected. Drag it to move it, or delete it with the trash button."
                             count == 0 -> "Tap the chart to add the first waypoint."
                             else -> "${routeSummary(route)} · tap to add, tap the line to insert, tap a point to select it"
                         },
@@ -83,34 +84,43 @@ internal fun RoutePanel(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                TextButton(onClick = { showList = true }) { Text("Routes (${routes.routes.size})") }
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                if (selectedWaypoint != null) {
-                    TextButton(
-                        onClick = {
-                            actions.removeAt(selectedWaypoint)
-                            onDeselectWaypoint()
-                        },
-                        enabled = actions.editable,
-                    ) { Text("Delete waypoint ${selectedWaypoint + 1}") }
-                    TextButton(onClick = onDeselectWaypoint) { Text("Done") }
-                } else {
-                    TextButton(onClick = actions.removeLast, enabled = actions.editable && count > 0) { Text("Undo last") }
-                    TextButton(onClick = actions.newRoute, enabled = actions.editable) { Text("New route") }
-                }
-            }
+            Spacer(modifier = Modifier.height(4.dp))
         }
     }
+}
 
-    if (showList) {
-        RoutesDialog(routes = routes, actions = actions, onDismiss = { showList = false })
+/**
+ * A route-mode tool under the route button: smaller than the main buttons, so it reads as part of
+ * route mode. The Routes list and New route use it.
+ */
+@Composable
+internal fun RouteToolButton(icon: ImageVector, description: String, enabled: Boolean = true, onClick: () -> Unit) {
+    Surface(
+        onClick = onClick,
+        enabled = enabled,
+        shape = CircleShape,
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
+        shadowElevation = 2.dp,
+        // Centred under the 48 dp buttons above, which the column aligns to the right edge.
+        modifier = Modifier
+            .padding(end = 5.dp)
+            .size(38.dp)
+            .semantics { contentDescription = description },
+    ) {
+        val ink = MaterialTheme.colorScheme.onSurface
+        Icon(
+            icon,
+            contentDescription = null,
+            tint = if (enabled) ink else ink.copy(alpha = 0.38f),
+            modifier = Modifier.padding(8.dp),
+        )
     }
 }
 
 /** Every saved route: pick one, rename or delete it, or start a new one. */
 @Composable
-private fun RoutesDialog(routes: RouteLibrary, actions: RouteActions, onDismiss: () -> Unit) {
+internal fun RoutesDialog(routes: RouteLibrary, actions: RouteActions, onDismiss: () -> Unit) {
     var renaming by remember { mutableStateOf<SavedRoute?>(null) }
     var deleting by remember { mutableStateOf<SavedRoute?>(null) }
 
@@ -234,7 +244,6 @@ internal fun RouteModeButton(active: Boolean, onClick: () -> Unit) {
                 drawCircle(ink, radius = w * 0.13f, center = it)
                 drawCircle(Color.White, radius = w * 0.06f, center = it)
             }
-            if (active) drawCircle(ink, radius = w * 0.5f, style = Stroke(width = w * 0.04f))
         }
     }
 }

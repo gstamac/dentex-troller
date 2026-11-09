@@ -607,11 +607,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    /** Removes the last waypoint of the selected route. */
-    fun removeLastWaypoint() {
-        editRoutes { library -> library.editSelected { it.dropLast(1) } }
-    }
-
     /** Inserts a waypoint into the selected route so that it becomes number [index] + 1. */
     fun insertWaypoint(index: Int, waypoint: Waypoint) {
         editRoutes { library ->

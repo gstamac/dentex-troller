@@ -57,17 +57,17 @@ private enum class Destination(
     val icon: ImageVector,
 ) {
     CHART("Chart", Icons.Default.Place),
+    SETTINGS("Settings", Icons.Default.Settings),
     DASHBOARD("Dashboard", Icons.Default.Info),
     CONTROLS("Controls", Icons.Default.PlayArrow),
     DIAGNOSTICS("Log", Icons.AutoMirrored.Filled.List),
-    SETTINGS("Settings", Icons.Default.Settings),
 }
 
 /**
  * Root composable.
  *
  * A single activity. The chart has the whole screen and a three-dot button that opens the
- * dashboard; the other screens slide in over it from the right, with a bottom menu between them,
+ * Settings; the other screens slide in over it from the right, with a bottom menu between them,
  * and return to the chart with the X at the top or with Back. Connecting is a popup, opened from
  * the status badge on the chart or from the remote on the Settings screen. STOP is on the
  * Controls screen and on the motor controls of the chart only.
@@ -114,7 +114,7 @@ fun DentexApp(viewModel: MainViewModel = viewModel()) {
         if (destination == Destination.CHART) viewModel.refreshChart()
     }
     // The last screen shown over the chart, kept while the panel slides out.
-    var shown by remember { mutableStateOf(Destination.DASHBOARD) }
+    var shown by remember { mutableStateOf(Destination.SETTINGS) }
     if (destination != Destination.CHART) shown = destination
 
     Scaffold(snackbarHost = { SnackbarHost(snackbarHostState) }) { padding ->
@@ -122,7 +122,7 @@ fun DentexApp(viewModel: MainViewModel = viewModel()) {
             ChartScreen(
                 viewModel,
                 onOpenConnect = { showConnect = true },
-                onOpenMenu = { destination = Destination.DASHBOARD },
+                onOpenMenu = { destination = Destination.SETTINGS },
             )
             AnimatedVisibility(
                 visible = destination != Destination.CHART,
