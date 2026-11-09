@@ -3,7 +3,12 @@ package com.dentex.troller.ui
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -13,12 +18,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -51,7 +57,6 @@ private enum class Destination(
     val icon: ImageVector,
 ) {
     CHART("Chart", Icons.Default.Place),
-    CONNECT("Connect", Icons.Default.Home),
     DASHBOARD("Dashboard", Icons.Default.Info),
     CONTROLS("Controls", Icons.Default.PlayArrow),
     DIAGNOSTICS("Log", Icons.AutoMirrored.Filled.List),
@@ -61,15 +66,18 @@ private enum class Destination(
 /**
  * Root composable.
  *
- * A single activity with a bottom navigation bar on every screen but the chart, which has the whole
- * screen and a three-dot button that opens the dashboard. The other screens return to the chart
- * with the X at the top or with Back; the bottom bar has no Chart entry. The emergency stop is on every screen: a STOP
- * button at the top, or Stop on the motor controls of the chart.
+ * A single activity. The chart has the whole screen and a three-dot button that opens the
+ * dashboard; the other screens slide in over it from the right, with a bottom menu between them,
+ * and return to the chart with the X at the top or with Back. Connecting is a popup, opened from
+ * the status badge on the chart or from the remote on the Settings screen. STOP is on the
+ * Controls screen and on the motor controls of the chart only.
  */
 @Composable
 fun DentexApp(viewModel: MainViewModel = viewModel()) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     var destination by remember { mutableStateOf(Destination.CHART) }
+    // The connect popup, from the status badge on the chart or Change on the Settings screen.
+    var showConnect by rememberSaveable { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
 
     // Looks for the last remote whenever the app comes to the front without a link. The first
@@ -100,54 +108,86 @@ fun DentexApp(viewModel: MainViewModel = viewModel()) {
         viewModel.clearNotice()
     }
 
-    // The chart has no bottom menu, so Back from any other screen goes back to it.
-    BackHandler(enabled = destination != Destination.CHART) { destination = Destination.CHART }
+    // The chart stays underneath, so it keeps its view and the track keeps recording. It looks
+    // for a newly copied chart file each time it comes back to the front.
+    LaunchedEffect(destination == Destination.CHART) {
+        if (destination == Destination.CHART) viewModel.refreshChart()
+    }
+    // The last screen shown over the chart, kept while the panel slides out.
+    var shown by remember { mutableStateOf(Destination.DASHBOARD) }
+    if (destination != Destination.CHART) shown = destination
 
-    Scaffold(
-        bottomBar = {
-            if (destination != Destination.CHART) NavigationBar {
-                Destination.entries.filter { it != Destination.CHART }.forEach { entry ->
-                    NavigationBarItem(
-                        selected = destination == entry,
-                        onClick = { destination = entry },
-                        icon = { Icon(entry.icon, contentDescription = entry.label) },
-                        label = { Text(entry.label) },
-                    )
-                }
+    Scaffold(snackbarHost = { SnackbarHost(snackbarHostState) }) { padding ->
+        Box(modifier = Modifier.fillMaxSize().padding(padding)) {
+            ChartScreen(
+                viewModel,
+                onOpenConnect = { showConnect = true },
+                onOpenMenu = { destination = Destination.DASHBOARD },
+            )
+            AnimatedVisibility(
+                visible = destination != Destination.CHART,
+                enter = slideInHorizontally(tween(SLIDE_MILLIS)) { it },
+                exit = slideOutHorizontally(tween(SLIDE_MILLIS)) { it },
+            ) {
+                // Registered after the chart's own handlers, so Back closes the panel first.
+                BackHandler { destination = Destination.CHART }
+                ServicePanel(
+                    viewModel = viewModel,
+                    destination = shown,
+                    onPick = { destination = it },
+                    onClose = { destination = Destination.CHART },
+                    onConnect = { showConnect = true },
+                )
             }
-        },
-        snackbarHost = { SnackbarHost(snackbarHostState) },
-    ) { padding ->
-        Column(modifier = Modifier.fillMaxSize().padding(padding)) {
-            // The other screens close back to the chart with the X. Controls has its own STOP next
-            // to "Motor on", and the chart has Stop on its motor controls.
-            if (destination != Destination.CHART) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp, top = 8.dp),
-                ) {
-                    if (destination != Destination.CONTROLS) {
-                        EmergencyStopButton(onStop = viewModel::requestStop, modifier = Modifier.weight(1f))
-                    } else {
-                        Spacer(modifier = Modifier.weight(1f))
-                    }
-                    IconButton(onClick = { destination = Destination.CHART }) {
-                        Icon(Icons.Default.Close, contentDescription = "Close and return to the chart")
-                    }
+        }
+    }
+    if (showConnect) ConnectDialog(viewModel, onDismiss = { showConnect = false })
+}
+
+private const val SLIDE_MILLIS = 250
+
+/**
+ * The screens other than the chart, sliding in over it from the right, with an X at the top that
+ * closes back to the chart and a bottom menu between them. By the owner's choice (2026-11-09) only
+ * Controls (next to "Motor on") and the chart's motor controls have STOP.
+ */
+@Composable
+private fun ServicePanel(
+    viewModel: MainViewModel,
+    destination: Destination,
+    onPick: (Destination) -> Unit,
+    onClose: () -> Unit,
+    onConnect: () -> Unit,
+) {
+    Surface(color = MaterialTheme.colorScheme.background, modifier = Modifier.fillMaxSize()) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp, top = 8.dp),
+            ) {
+                Spacer(modifier = Modifier.weight(1f))
+                IconButton(onClick = onClose) {
+                    Icon(Icons.Default.Close, contentDescription = "Close and return to the chart")
                 }
             }
             Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
                 when (destination) {
-                    Destination.CONNECT -> ConnectScreen(viewModel)
                     Destination.DASHBOARD -> DashboardScreen(viewModel)
-                    Destination.CHART -> ChartScreen(
-                        viewModel,
-                        onOpenConnect = { destination = Destination.CONNECT },
-                        onOpenMenu = { destination = Destination.DASHBOARD },
-                    )
                     Destination.CONTROLS -> ControlsScreen(viewModel)
                     Destination.DIAGNOSTICS -> DiagnosticsScreen(viewModel)
-                    Destination.SETTINGS -> SettingsScreen(viewModel)
+                    Destination.SETTINGS -> SettingsScreen(viewModel, onChangeRemote = onConnect)
+                    Destination.CHART -> Unit
+                }
+            }
+            // The outer Scaffold already keeps clear of the system bars.
+            NavigationBar(windowInsets = WindowInsets(0, 0, 0, 0)) {
+                Destination.entries.filter { it != Destination.CHART }.forEach { entry ->
+                    NavigationBarItem(
+                        selected = destination == entry,
+                        onClick = { onPick(entry) },
+                        icon = { Icon(entry.icon, contentDescription = entry.label) },
+                        label = { Text(entry.label) },
+                    )
                 }
             }
         }

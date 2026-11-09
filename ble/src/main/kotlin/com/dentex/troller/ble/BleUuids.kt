@@ -28,8 +28,11 @@ object BleUuids {
     val SCAN_SERVICE_FILTERS: List<UUID> = listOf(SERVICE)
 
     /**
-     * Name prefix advertised by the motor's BLE module, used as a secondary scan
-     * filter when the advertisement does not carry the service UUID.
+     * Name prefix the remote's Bluetooth module (an HM-10 type, for example "HM_BB65") advertises.
+     * Its advertisement carries no service UUID, so the connect list uses the name to put it first.
      */
-    const val DEVICE_NAME_PREFIX: String = "Haswing"
+    const val REMOTE_NAME_PREFIX: String = "HM_"
+
+    /** Whether [name] looks like the remote's Bluetooth module. */
+    fun isRemoteName(name: String?): Boolean = name?.startsWith(REMOTE_NAME_PREFIX, ignoreCase = true) == true
 }

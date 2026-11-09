@@ -19,6 +19,18 @@ class PmtilesHeaderTest {
         }
 
     @Test
+    fun aBoatOffTheChartIsFollowedToItsEdge() {
+        // The phone's fix in Ljubljana, north of the chart.
+        assertEquals(45.85 to 14.536512, ChartStyle.clampToBounds(46.070532, 14.536512))
+        assertEquals(39.75 to 20.05, ChartStyle.clampToBounds(35.0, 25.0))
+    }
+
+    @Test
+    fun aBoatOnTheChartIsFollowedWhereItIs() {
+        assertEquals(44.2167 to 14.7934, ChartStyle.clampToBounds(44.2167, 14.7934))
+    }
+
+    @Test
     fun acceptsAVersion3Archive() {
         assertTrue(PmtilesHeader.isVersion3(header("PMTiles", 3)))
     }

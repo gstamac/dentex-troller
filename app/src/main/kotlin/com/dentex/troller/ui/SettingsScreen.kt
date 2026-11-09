@@ -10,6 +10,7 @@ import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -20,19 +21,26 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.dentex.troller.MainViewModel
+import com.dentex.troller.ble.ConnectionState
 import com.dentex.troller.chart.ChartStyle
 import kotlin.math.roundToInt
 
 /** Metres per second at one knot. */
 private const val KNOT_MPS = 1852.0 / 3600.0
 
-/** The trolling speed the radius choices are explained with. */
+/**
+ * The boat speed each radius choice is explained with: trolling for the small ones, faster
+ * running for the large ones. A radius not listed uses trolling speed.
+ */
+private val KNOTS_FOR_RADIUS = mapOf(25 to 3, 50 to 3, 100 to 6, 200 to 20)
 private const val TROLLING_KNOTS = 3
 
 /** Settings that are kept across restarts. */
 @Composable
-fun SettingsScreen(viewModel: MainViewModel) {
+fun SettingsScreen(viewModel: MainViewModel, onChangeRemote: () -> Unit) {
     val radius by viewModel.nearSeamarkRadius.collectAsStateWithLifecycle()
+    val remote by viewModel.savedRemote.collectAsStateWithLifecycle()
+    val state by viewModel.uiState.collectAsStateWithLifecycle()
 
     Column(
         modifier = Modifier
@@ -40,17 +48,41 @@ fun SettingsScreen(viewModel: MainViewModel) {
             .verticalScroll(rememberScrollState())
             .padding(16.dp),
     ) {
+        SectionHeader("Remote")
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 16.dp)) {
+            Column(modifier = Modifier.weight(1f)) {
+                val saved = remote
+                Text(
+                    saved?.let { it.name ?: "(no name)" } ?: "No remote yet",
+                    style = MaterialTheme.typography.bodyLarge,
+                )
+                Text(
+                    when {
+                        saved == null -> "Connect to the motor's remote once; the app reconnects to it after that."
+                        (state.connectionState as? ConnectionState.Ready)?.deviceId == saved.id -> "${saved.id}  ·  connected"
+                        else -> saved.id
+                    },
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            OutlinedButton(onClick = onChangeRemote, modifier = Modifier.padding(start = 8.dp)) {
+                Text(if (remote == null) "Connect" else "Change")
+            }
+        }
         SectionHeader("Seamarks near the boat")
         Text(
             "With Seamarks off in the chart's layers menu, rocks, wrecks, obstructions, buoys and " +
-                "beacons still show within this distance of the boat.",
+                "beacons still show within this distance of the boat, unless this is Off.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(bottom = 8.dp),
         )
         Column(modifier = Modifier.selectableGroup()) {
-            ChartStyle.NEAR_BOAT_RADII.forEach { meters ->
-                val seconds = (meters / (TROLLING_KNOTS * KNOT_MPS)).roundToInt()
+            (listOf(ChartStyle.NEAR_BOAT_OFF) + ChartStyle.NEAR_BOAT_RADII).forEach { meters ->
+                val off = meters == ChartStyle.NEAR_BOAT_OFF
+                val knots = KNOTS_FOR_RADIUS[meters] ?: TROLLING_KNOTS
+                val seconds = (meters / (knots * KNOT_MPS)).roundToInt()
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -62,9 +94,9 @@ fun SettingsScreen(viewModel: MainViewModel) {
                 ) {
                     RadioButton(selected = meters == radius, onClick = null, modifier = Modifier.padding(10.dp))
                     Column {
-                        Text("$meters m", style = MaterialTheme.typography.bodyLarge)
+                        Text(if (off) "Off" else "$meters m", style = MaterialTheme.typography.bodyLarge)
                         Text(
-                            "About $seconds s at $TROLLING_KNOTS knots",
+                            if (off) "No seamarks near the boat while they are hidden" else "About $seconds s at $knots knots",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )

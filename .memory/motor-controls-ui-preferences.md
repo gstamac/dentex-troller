@@ -15,7 +15,13 @@ These preferences come from the owner's requests on 2026-11-06:
 - The selection (pin, route) must survive starting, stopping and anchoring a go-to.
 - The top-right badge only shows status and doesn't stop the motor. Manual is drawn as a propeller.
 - The chart screen has no bottom menu. A three-dot button under the route button opens the Dashboard. The other screens keep the bottom menu, but without a Chart entry (removed
-  2026-11-09); an X at the top right, beside STOP, closes them back to the chart.
+  2026-11-09). They slide in over the chart from the right, like Google Maps settings, and an X at
+  the top right (or Back) slides them away; the chart stays alive underneath.
+- Connect is a popup, not a screen (2026-11-09): the chart's status badge opens it, and so does
+  Change next to the saved remote on Settings. It closes itself once a new link is ready.
+- STOP is only on Controls and on the chart's motor controls. On 2026-11-09 the owner had the STOP bar
+  removed from Connect, Dashboard, Log and Settings, after being told it goes against "STOP always
+  available". Don't put it back on those screens; never remove it from Controls or the chart.
 - The track record button is a dashed winding trail ending in a red dot; while recording it is red
   with a solid trail and a stop square. The owner asked for no blinking (2026-11-09).
 - The Route screen was removed on 2026-11-06, because routes are edited on the map. The owner doesn't want route upload or download back: following a route uploads it.

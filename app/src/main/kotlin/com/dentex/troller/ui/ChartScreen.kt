@@ -667,7 +667,7 @@ private fun ChartView(
     LaunchedEffect(style, seamarks.show, centre, nearRadius) {
         val near = when {
             seamarks.show -> null
-            centre == null -> ""
+            centre == null || nearRadius <= ChartStyle.NEAR_BOAT_OFF -> ""
             else -> ChartGeoJson.circle(centre.latitude, centre.longitude, nearRadius.toDouble())
         }
         ChartStyle.SEAMARK_LAYERS.forEach { id ->
@@ -726,8 +726,14 @@ private fun ChartView(
     LaunchedEffect(map, follow, latitude, longitude) {
         val m = map ?: return@LaunchedEffect
         if (!follow || latitude == null || longitude == null) return@LaunchedEffect
-        // Only the centre moves: the zoom stays where the user left it.
-        m.animateCamera(CameraUpdateFactory.newLatLng(LatLng(latitude, longitude)), FOLLOW_ANIMATION_MILLIS)
+        // Only the centre moves: the zoom stays where the user left it. A boat off the chart is
+        // followed to the chart's edge, and once the centre is there nothing more is sent.
+        val (lat, lon) = ChartStyle.clampToBounds(latitude, longitude)
+        val current = m.cameraPosition
+        val at = current.target
+        if (at != null && abs(at.latitude - lat) < 1e-7 && abs(at.longitude - lon) < 1e-7) return@LaunchedEffect
+        val target = CameraPosition.Builder().target(LatLng(lat, lon)).zoom(current.zoom).build()
+        m.animateCamera(CameraUpdateFactory.newCameraPosition(target), FOLLOW_ANIMATION_MILLIS)
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -1005,7 +1011,11 @@ private fun LayersMenu(
                             Text("Seamarks", style = MaterialTheme.typography.bodyMedium)
                             if (!seamarks.show) {
                                 Text(
-                                    "Hazards and buoys within ${seamarks.nearRadius} m",
+                                    if (seamarks.nearRadius <= ChartStyle.NEAR_BOAT_OFF) {
+                                        "None near the boat either"
+                                    } else {
+                                        "Hazards and buoys within ${seamarks.nearRadius} m"
+                                    },
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )

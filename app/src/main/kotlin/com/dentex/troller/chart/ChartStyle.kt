@@ -129,6 +129,9 @@ object ChartStyle {
 
     const val DEFAULT_NEAR_BOAT_RADIUS = 50
 
+    /** The radius setting that shows no seamarks near the boat while the seamarks are hidden. */
+    const val NEAR_BOAT_OFF = 0
+
     /**
      * The filter of seamark layer [layerId]. [near] is null to show every seamark; otherwise only
      * [NEAR_BOAT_KINDS] inside that GeoJSON polygon are drawn, and an empty string draws none,
@@ -172,6 +175,16 @@ object ChartStyle {
 
     /** Adriatic bounds of the chart file: west, south, east, north. */
     val BOUNDS: DoubleArray = doubleArrayOf(12.0, 39.75, 20.05, 45.85)
+
+    /**
+     * The nearest point inside [BOUNDS] to [latitude], [longitude], as (latitude, longitude). The
+     * chart follows the boat to it, as the map refuses targets outside the bounds and fights an
+     * animation to one, which made it flicker and jump zoom with a fix on land north of the chart.
+     */
+    fun clampToBounds(latitude: Double, longitude: Double): Pair<Double, Double> {
+        val (west, south, east, north) = BOUNDS.toList()
+        return latitude.coerceIn(south, north) to longitude.coerceIn(west, east)
+    }
 
     data class Palette(
         val water: List<String>,

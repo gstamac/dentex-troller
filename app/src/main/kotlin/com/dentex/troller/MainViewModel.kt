@@ -85,6 +85,9 @@ data class MainUiState(
  * The view model is the only place that knows about the whole stack, so the UI stays a pure
  * rendering of [uiState].
  */
+/** A remote the app has connected to: its Bluetooth address and, if it has one, its name. */
+data class SavedRemote(val id: String, val name: String?)
+
 class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     /** Diagnostic log; also used to build the export that can be compared with Helmsman. */
@@ -264,6 +267,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             if (BuildConfig.SIMULATOR) "$CONNECTION_SETTINGS-sim" else CONNECTION_SETTINGS,
             android.content.Context.MODE_PRIVATE,
         )
+
+    private val _savedRemote = MutableStateFlow(
+        connectionSettings.getString(KEY_LAST_DEVICE, null)?.let { id ->
+            SavedRemote(id, connectionSettings.getString(KEY_LAST_DEVICE_NAME, null))
+        },
+    )
+
+    /** The remote the app reconnects to, the last one that was ready; null before the first. */
+    val savedRemote: StateFlow<SavedRemote?> = _savedRemote.asStateFlow()
     private var autoConnectTarget: String? = null
     private var autoConnectFound = false
     private var reconnectJob: Job? = null
@@ -289,6 +301,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             .putString(KEY_LAST_DEVICE, state.deviceId)
                             .putString(KEY_LAST_DEVICE_NAME, state.deviceName)
                             .apply()
+                        _savedRemote.value = SavedRemote(state.deviceId, state.deviceName)
                         _uiState.update { it.copy(reconnecting = false) }
                         motor.onConnected()
                     }

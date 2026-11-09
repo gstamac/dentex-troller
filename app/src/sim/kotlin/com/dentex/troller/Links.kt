@@ -142,7 +142,8 @@ private class SimulatedLink(
     companion object {
         const val ACTION = "com.dentex.troller.SIM"
         const val DEVICE_ID = "SIM:00:00:00:00:01"
-        const val NAME = "Simulated remote"
+        // Named like the real remote's module, so the connect list groups it the same way.
+        const val NAME = "HM_SIM simulated remote"
         private const val TAG = "SIM"
     }
 }

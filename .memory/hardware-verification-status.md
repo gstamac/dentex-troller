@@ -44,6 +44,10 @@ and other modes (mode 12), which is untested.
 On 2026-11-08 the owner tried track recording, the scale line and zoom 20 in the sim build on the
 phone ([[track-recording-decisions]]). Track recording with the real motor GPS outdoors is untested.
 
+On 2026-11-09 the owner's remote turned out to be an HM-10 type module named `HM_BB65`
+(`C4:F3:12:60:BB:65`), whose advertisement carries no service UUID, so a service filter can't find
+it. The connect popup has no filter and lists `HM_…` devices first.
+
 The `simulator` module (sim build, 2026-11-05) models these observations. When a field test
 shows different motor behaviour, change `SimulatedMotor` and its tests to match, so land tests stay
 honest.

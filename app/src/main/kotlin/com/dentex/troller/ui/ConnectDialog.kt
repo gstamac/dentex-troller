@@ -6,13 +6,13 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -23,6 +23,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -35,13 +36,17 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.dentex.troller.MainViewModel
 import com.dentex.troller.ble.BleScanResult
+import com.dentex.troller.ble.BleUuids
 import com.dentex.troller.ble.ConnectionState
 
 /**
- * Scan and connect screen.
+ * The connect popup, opened from the status badge on the chart and from the remote on the
+ * Settings screen. It closes by itself once a link it did not start with is ready.
  *
  * The BLE peer is the remote control of the motor, not the motor itself, so the remote has to be
  * switched on before it answers.
@@ -52,10 +57,31 @@ import com.dentex.troller.ble.ConnectionState
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ConnectScreen(viewModel: MainViewModel) {
+fun ConnectDialog(viewModel: MainViewModel, onDismiss: () -> Unit) {
+    val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val readyAtOpen = remember { state.connectionState is ConnectionState.Ready }
+    LaunchedEffect(state.connectionState) {
+        if (state.connectionState is ConnectionState.Ready && !readyAtOpen) onDismiss()
+    }
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Surface(
+            shape = MaterialTheme.shapes.extraLarge,
+            color = MaterialTheme.colorScheme.surface,
+            tonalElevation = 6.dp,
+            // A fixed size: a popup that grew with each scan result made the window manager
+            // re-lay and animate its window every time, and the chart behind it flickered.
+            modifier = Modifier.fillMaxWidth(0.92f).fillMaxHeight(0.8f),
+        ) {
+            ConnectContent(viewModel, onDismiss)
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ConnectContent(viewModel: MainViewModel, onDismiss: () -> Unit) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
-    var serviceFilter by remember { mutableStateOf(false) }
 
     val locationPermission = BluetoothPermissions.location
     var hasBluetoothPermission by remember { mutableStateOf(false) }
@@ -73,11 +99,17 @@ fun ConnectScreen(viewModel: MainViewModel) {
     ) {
         refreshPermissionState()
         if (hasBluetoothPermission) {
-            viewModel.startScan(serviceFilter)
+            viewModel.startScan()
         }
     }
 
-    Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+    Column(modifier = Modifier.padding(start = 20.dp, end = 8.dp, top = 8.dp, bottom = 12.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Connect", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+            IconButton(onClick = onDismiss) {
+                Icon(Icons.Default.Close, contentDescription = "Close")
+            }
+        }
         Text(
             text = "Switch on the remote control of the motor first. The phone talks to the " +
                 "remote, and the remote talks to the motor.",
@@ -90,7 +122,7 @@ fun ConnectScreen(viewModel: MainViewModel) {
             Button(
                 onClick = {
                     if (hasBluetoothPermission) {
-                        viewModel.startScan(serviceFilter)
+                        viewModel.startScan()
                         // The location permission is not needed for the scan itself, but it is
                         // requested as well because some phones deliver no scan results without
                         // it. Granting it restarts the scan.
@@ -104,17 +136,6 @@ fun ConnectScreen(viewModel: MainViewModel) {
             ) {
                 Icon(Icons.Default.Search, contentDescription = null)
                 Text("  Scan")
-            }
-            IconButton(onClick = { viewModel.startScan(serviceFilter) }) {
-                Icon(Icons.Default.Refresh, contentDescription = "Restart the scan")
-            }
-            TextButton(
-                onClick = {
-                    serviceFilter = !serviceFilter
-                    viewModel.startScan(serviceFilter)
-                },
-            ) {
-                Text(if (serviceFilter) "Filter: service" else "Filter: off")
             }
         }
 
@@ -170,12 +191,27 @@ fun ConnectScreen(viewModel: MainViewModel) {
         HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
         if (state.devices.isNotEmpty()) {
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                items(state.devices, key = { it.deviceId }) { device ->
-                    DeviceRow(
-                        device = device,
-                        onConnect = { viewModel.connect(device.deviceId) },
-                    )
+            // The remote's Bluetooth module is named "HM_…"; those come first, apart from the rest.
+            val (remotes, others) = state.devices.partition { BleUuids.isRemoteName(it.deviceName) }
+            LazyColumn(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                items(remotes, key = { it.deviceId }) { device ->
+                    DeviceRow(device = device, onConnect = { viewModel.connect(device.deviceId) })
+                }
+                if (remotes.isNotEmpty() && others.isNotEmpty()) {
+                    item(key = "divider") {
+                        Column(modifier = Modifier.padding(vertical = 4.dp)) {
+                            HorizontalDivider(thickness = 2.dp)
+                            Text(
+                                "Other devices",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(start = 16.dp, top = 6.dp),
+                            )
+                        }
+                    }
+                }
+                items(others, key = { it.deviceId }) { device ->
+                    DeviceRow(device = device, onConnect = { viewModel.connect(device.deviceId) })
                 }
             }
         }
