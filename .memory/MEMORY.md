@@ -7,7 +7,7 @@
 - [Offline chart decisions](offline-chart-decisions.md): chart is EMODnet+OSM PMTiles installed outside the APK
 - [Chart test area](chart-test-area.md): build charts with BBOX="14.68 44.14 14.91 44.30" unless the full Adriatic is asked for
 - [Satellite layer sources](satellite-layer-sources.md): satellite layer dropped 2026-11-05; Sentinel-2 too coarse, DGU land only, Esri/Google/Bing not offline
-- [Motor controls UI preferences](motor-controls-ui-preferences.md): icon buttons always shown, disabled not hidden; no go-to dialog or panel; chart has no bottom menu; no Route screen; no distance-based route joining
+- [Motor controls UI preferences](motor-controls-ui-preferences.md): icon buttons always shown, disabled not hidden; no go-to dialog or panel; chart has no bottom menu, other screens close with X; no Route screen; no distance-based route joining
 - [Files never to commit](untracked-files.md): fishing-spot GPX; docs/csv and docs/gpkg gitignored; SonarChart pmtiles and their readme lines
 - [Other motor brands research](other-motor-brands-research.md): Minn Kota BT i-Pilot Link most feasible, QUEST riskier, MotorGuide needs N2K hardware; nothing started
 - [Track recording decisions](track-recording-decisions.md): yellow 2.5 px line; ignore impossible jumps, join sim jumps, no break when still; background recording undecided

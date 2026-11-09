@@ -5,17 +5,21 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
@@ -30,6 +34,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -57,8 +62,8 @@ private enum class Destination(
  * Root composable.
  *
  * A single activity with a bottom navigation bar on every screen but the chart, which has the whole
- * screen and a three-dot button that opens the dashboard. Back on another screen returns to the
- * chart. The emergency stop is on every screen: a STOP
+ * screen and a three-dot button that opens the dashboard. The other screens return to the chart
+ * with the X at the top or with Back; the bottom bar has no Chart entry. The emergency stop is on every screen: a STOP
  * button at the top, or Stop on the motor controls of the chart.
  */
 @Composable
@@ -101,7 +106,7 @@ fun DentexApp(viewModel: MainViewModel = viewModel()) {
     Scaffold(
         bottomBar = {
             if (destination != Destination.CHART) NavigationBar {
-                Destination.entries.forEach { entry ->
+                Destination.entries.filter { it != Destination.CHART }.forEach { entry ->
                     NavigationBarItem(
                         selected = destination == entry,
                         onClick = { destination = entry },
@@ -114,12 +119,22 @@ fun DentexApp(viewModel: MainViewModel = viewModel()) {
         snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
-            // Controls has its own STOP next to "Motor on", and the chart has Stop on its motor controls.
-            if (destination != Destination.CONTROLS && destination != Destination.CHART) {
-                EmergencyStopButton(
-                    onStop = viewModel::requestStop,
-                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp),
-                )
+            // The other screens close back to the chart with the X. Controls has its own STOP next
+            // to "Motor on", and the chart has Stop on its motor controls.
+            if (destination != Destination.CHART) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp, top = 8.dp),
+                ) {
+                    if (destination != Destination.CONTROLS) {
+                        EmergencyStopButton(onStop = viewModel::requestStop, modifier = Modifier.weight(1f))
+                    } else {
+                        Spacer(modifier = Modifier.weight(1f))
+                    }
+                    IconButton(onClick = { destination = Destination.CHART }) {
+                        Icon(Icons.Default.Close, contentDescription = "Close and return to the chart")
+                    }
+                }
             }
             Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
                 when (destination) {

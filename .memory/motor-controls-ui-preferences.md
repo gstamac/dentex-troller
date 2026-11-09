@@ -14,7 +14,10 @@ These preferences come from the owner's requests on 2026-11-06:
 - There are no "Move boat here" or "Follow route" buttons in the info sheet. The navigate button takes the selection, or continues a go-to that anchoring interrupted.
 - The selection (pin, route) must survive starting, stopping and anchoring a go-to.
 - The top-right badge only shows status and doesn't stop the motor. Manual is drawn as a propeller.
-- The chart screen has no bottom menu. A three-dot button under the route button opens the Dashboard, and the other screens keep the bottom menu, with Chart first.
+- The chart screen has no bottom menu. A three-dot button under the route button opens the Dashboard. The other screens keep the bottom menu, but without a Chart entry (removed
+  2026-11-09); an X at the top right, beside STOP, closes them back to the chart.
+- The track record button is a dashed winding trail ending in a red dot; while recording it is red
+  with a solid trail and a stop square. The owner asked for no blinking (2026-11-09).
 - The Route screen was removed on 2026-11-06, because routes are edited on the map. The owner doesn't want route upload or download back: following a route uploads it.
 - Follow route starts at the tapped waypoint, or at the first point of a tapped section. The owner rejected distance-based joining twice, so don't bring it back.
 
