@@ -14,6 +14,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -21,6 +22,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
+import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
@@ -34,6 +36,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -46,7 +49,8 @@ import com.dentex.troller.ble.ConnectionState
 
 /**
  * The connect popup, opened from the status badge on the chart and from the remote on the
- * Settings screen. It closes by itself once a link it did not start with is ready.
+ * Settings screen. It closes by itself once a link it did not start with is ready. A connected
+ * remote is shown at the top with a Disconnect button.
  *
  * The BLE peer is the remote control of the motor, not the motor itself, so the remote has to be
  * switched on before it answers.
@@ -93,6 +97,30 @@ private fun ConnectContent(viewModel: MainViewModel, onDismiss: () -> Unit) {
     }
 
     LaunchedEffect(Unit) { refreshPermissionState() }
+
+    var confirmDisconnect by remember { mutableStateOf(false) }
+    if (confirmDisconnect) {
+        AlertDialog(
+            onDismissRequest = { confirmDisconnect = false },
+            title = { Text("Disconnect the remote?") },
+            text = {
+                Text(
+                    "Disconnecting does not stop the motor, and the app cannot stop it until you " +
+                        "connect again. Press STOP first if the motor is running. The app does not " +
+                        "reconnect by itself.",
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        confirmDisconnect = false
+                        viewModel.disconnect()
+                    },
+                ) { Text("Disconnect", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = { TextButton(onClick = { confirmDisconnect = false }) { Text("Cancel") } },
+        )
+    }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
@@ -186,13 +214,16 @@ private fun ConnectContent(viewModel: MainViewModel, onDismiss: () -> Unit) {
             )
         }
 
-        ConnectionStateRow(state.connectionState)
+        ConnectionStateRow(state.connectionState, onDisconnect = { confirmDisconnect = true })
 
         HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
         if (state.devices.isNotEmpty()) {
             // The remote's Bluetooth module is named "HM_…"; those come first, apart from the rest.
-            val (remotes, others) = state.devices.partition { BleUuids.isRemoteName(it.deviceName) }
+            val linked = (state.connectionState as? ConnectionState.Ready)?.deviceId
+            val (remotes, others) = state.devices
+                .filter { it.deviceId != linked }
+                .partition { BleUuids.isRemoteName(it.deviceName) }
             LazyColumn(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 items(remotes, key = { it.deviceId }) { device ->
                     DeviceRow(device = device, onConnect = { viewModel.connect(device.deviceId) })
@@ -242,16 +273,36 @@ private fun DeviceRow(device: BleScanResult, onConnect: () -> Unit) {
     )
 }
 
+/**
+ * The link at the top of the popup. A connected remote is shown here with a Disconnect button: it
+ * stops advertising while it is connected, so a scan never lists it.
+ */
 @Composable
-private fun ConnectionStateRow(connectionState: ConnectionState) {
+private fun ConnectionStateRow(connectionState: ConnectionState, onDisconnect: () -> Unit) {
+    if (connectionState is ConnectionState.Ready) {
+        Surface(
+            color = MaterialTheme.colorScheme.secondaryContainer,
+            shape = MaterialTheme.shapes.medium,
+            modifier = Modifier.fillMaxWidth().padding(top = 12.dp, end = 12.dp),
+        ) {
+            ListItem(
+                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                overlineContent = { Text("Connected") },
+                headlineContent = { Text(connectionState.deviceName ?: "(no name)") },
+                supportingContent = { Text(connectionState.deviceId) },
+                trailingContent = {
+                    OutlinedButton(onClick = onDisconnect) { Text("Disconnect") }
+                },
+            )
+        }
+        return
+    }
     val (label, detail) = when (connectionState) {
-        is ConnectionState.Disconnected -> "Disconnected" to "No motor connected"
+        is ConnectionState.Disconnected -> "Disconnected" to "No remote connected"
         is ConnectionState.Connecting -> "Connecting" to "Opening the GATT connection…"
         is ConnectionState.Connected -> "Connected" to "Discovering services…"
-        is ConnectionState.Ready ->
-            "Ready" to "${connectionState.deviceName ?: connectionState.deviceId}"
-
         is ConnectionState.Failed -> "Failed" to connectionState.reason
+        is ConnectionState.Ready -> return
     }
     Column(modifier = Modifier.padding(top = 8.dp)) {
         Text(label, style = MaterialTheme.typography.titleMedium)
