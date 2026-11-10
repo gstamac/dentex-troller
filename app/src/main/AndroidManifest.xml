@@ -24,6 +24,13 @@
     -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <!--
+        Track recording in the background: a location foreground service, started while the app
+        is on screen, keeps the phone's GPS. No background location permission is needed for it.
+    -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application
         android:name=".DentexApplication"
@@ -46,6 +53,11 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <service
+            android:name=".track.TrackService"
+            android:exported="false"
+            android:foregroundServiceType="location" />
     </application>
 
 </manifest>

@@ -91,6 +91,8 @@ fun DentexApp(viewModel: MainViewModel = viewModel()) {
     DisposableEffect(lifecycle) {
         val observer = LifecycleEventObserver { _, event ->
             if (event != Lifecycle.Event.ON_START) return@LifecycleEventObserver
+            // A track that was recording when the app was closed records in the background again.
+            viewModel.resumeTrackRecording()
             if (BluetoothPermissions.hasBluetooth(context)) {
                 viewModel.autoConnect()
             } else if (!askedForPermissions) {

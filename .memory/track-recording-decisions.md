@@ -17,8 +17,8 @@ The owner asked for track recording on 2026-11-08 and tested it in the sim build
 - Switching between motor and phone GPS starts a new segment. When the phone was unlocked, the stale
   sim motor fell back to the phone's real fix 205 km away, and a line was drawn to it.
 
-Still open: positions are recorded only while the Chart screen is in the foreground. Claude offered
-an Android foreground service for background recording; the owner hasn't decided.
+Background recording: the owner asked for it on 2026-11-10. A location foreground service
+(`TrackService`) with a notification keeps it recording; not yet tested on the water.
 
 **Why:** the owner tests with the sim, whose teleports look like bad fixes to a speed rule alone.
 **How to apply:** keep the thresholds in `TrackRecorder` (1 km jump allowance, 50 kn, 2 min) unless

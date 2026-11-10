@@ -11,6 +11,7 @@ import android.graphics.PointF
 import android.graphics.RectF
 import android.location.Location
 import android.location.LocationManager
+import android.os.Build
 import android.os.SystemClock
 import android.view.MotionEvent
 import android.view.ViewConfiguration
@@ -158,6 +159,18 @@ fun ChartScreen(viewModel: MainViewModel, onOpenConnect: () -> Unit, onOpenMenu:
         uri?.let(viewModel::importChart)
     }
     val import = { importer.launch(arrayOf("*/*")) }
+    // The notification of the background recording, with its Stop recording, needs this on
+    // Android 13 and newer; without it the track still records.
+    val notificationRequest = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
+    val context = LocalContext.current
+    val startTrack = { keepOld: Boolean ->
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            notificationRequest.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+        viewModel.startTrack(keepOld)
+    }
 
     // Picks up chart files that were copied with adb while the app was running.
     LaunchedEffect(Unit) { viewModel.refreshChart() }
@@ -221,9 +234,8 @@ fun ChartScreen(viewModel: MainViewModel, onOpenConnect: () -> Unit, onOpenMenu:
             track = track,
             recording = recordingTrack,
             tail = trackTail,
-            onStart = viewModel::startTrack,
+            onStart = startTrack,
             onStop = viewModel::stopTrack,
-            onPosition = viewModel::recordTrackPosition,
         ),
         goTo = GoToActions(
             state = goToState,
@@ -292,8 +304,8 @@ internal class RouteActions(
 }
 
 /**
- * The recorded track and its recording. [onStart] takes whether to keep the old track;
- * [onPosition] takes each fresh boat position, with its time in milliseconds.
+ * The recorded track and its recording. [onStart] takes whether to keep the old track. The
+ * positions are recorded by the app, also in the background, not by the chart.
  */
 internal class TrackOverlay(
     val track: Track,
@@ -302,7 +314,6 @@ internal class TrackOverlay(
     val tail: Waypoint?,
     val onStart: (Boolean) -> Unit,
     val onStop: () -> Unit,
-    val onPosition: (Double, Double, PositionSource, Long) -> Unit,
 )
 
 /** The pins and what the chart may do with them. */
@@ -660,18 +671,8 @@ private fun ChartView(
     }
     // The pin and the route whose info is shown are drawn highlighted.
     val selectedPinId = tapped?.pin?.id?.takeIf { !routeMode }
-    // Fresh positions go to the track; a stale one is where the boat was, not where it is.
-    val freshPosition = position?.takeIf { !it.stale }
-    val freshBoat = freshPosition?.let { Waypoint(it.latitude, it.longitude) }
-    val freshSource = freshPosition?.source
-    val currentTrack by rememberUpdatedState(track)
-    // Also run when recording starts, so the track begins where the boat is then rather than
-    // after its first move.
-    LaunchedEffect(freshBoat, freshSource, track.recording) {
-        if (freshBoat != null && freshSource != null) {
-            currentTrack.onPosition(freshBoat.latitude, freshBoat.longitude, freshSource, System.currentTimeMillis())
-        }
-    }
+    // A stale position is where the boat was, not where it is.
+    val freshBoat = position?.takeIf { !it.stale }?.let { Waypoint(it.latitude, it.longitude) }
     // Never joined to a position the recorder left out as a bad fix, nor to a stale one.
     val trackTail = track.tail?.takeIf { track.recording && freshBoat != null }
     LaunchedEffect(style, track.track, trackTail) {
