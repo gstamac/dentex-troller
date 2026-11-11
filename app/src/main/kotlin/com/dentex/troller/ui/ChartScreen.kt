@@ -80,6 +80,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -1348,7 +1349,8 @@ private val SCALE_MAX_WIDTH = 100.dp
 
 /**
  * A line of a round length in m or km, with end ticks, as on a paper chart, and the map's [zoom]
- * level beside the length.
+ * level beside the length. No panel: dark ink with a white edge, like the chart's own labels, so
+ * it reads over land and water alike.
  */
 @Composable
 private fun ScaleLine(metersPerPixel: Double, zoom: Double?, modifier: Modifier = Modifier) {
@@ -1356,34 +1358,47 @@ private fun ScaleLine(metersPerPixel: Double, zoom: Double?, modifier: Modifier 
     val maxPixels = with(density) { SCALE_MAX_WIDTH.toPx() }.toDouble()
     val scale = MapScale.fit(metersPerPixel, maxPixels) ?: return
     val width = with(density) { scale.length.toFloat().toDp() }
-    val ink = MaterialTheme.colorScheme.onSurface
     val zoomText = zoom?.let { "z" + String.format(Locale.US, "%.1f", it) }
-    Surface(
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
-        shape = MaterialTheme.shapes.small,
-        modifier = modifier.semantics {
-            contentDescription = "Scale: ${scale.label}" + (zoom?.let { ", zoom ${String.format(Locale.US, "%.1f", it)}" } ?: "")
-        },
+    val text = listOfNotNull(scale.label, zoomText).joinToString("  ·  ")
+    val style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold)
+    Column(
+        modifier = modifier
+            .padding(horizontal = 4.dp)
+            .semantics {
+                contentDescription = "Scale: ${scale.label}" + (zoom?.let { ", zoom ${String.format(Locale.US, "%.1f", it)}" } ?: "")
+            },
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
+        Box {
+            // The white edge is the same text drawn as an outline underneath.
             Text(
-                text = listOfNotNull(scale.label, zoomText).joinToString("  ·  "),
-                style = MaterialTheme.typography.labelSmall,
-                color = ink,
+                text = text,
+                style = style.copy(drawStyle = Stroke(width = with(density) { SCALE_HALO.toPx() }, join = StrokeJoin.Round)),
+                color = Color.White,
             )
-            Canvas(modifier = Modifier.width(width).height(6.dp)) {
-                val stroke = 2.dp.toPx()
-                val y = size.height - stroke / 2
-                drawLine(ink, Offset(0f, y), Offset(size.width, y), stroke)
-                drawLine(ink, Offset(stroke / 2, 0f), Offset(stroke / 2, y), stroke)
-                drawLine(ink, Offset(size.width - stroke / 2, 0f), Offset(size.width - stroke / 2, y), stroke)
-            }
+            Text(text = text, style = style, color = SCALE_INK)
+        }
+        Canvas(modifier = Modifier.width(width + SCALE_HALO).height(6.dp + SCALE_HALO)) {
+            val stroke = 2.dp.toPx()
+            val halo = SCALE_HALO.toPx()
+            val left = halo / 2 + stroke / 2
+            val right = size.width - halo / 2 - stroke / 2
+            val top = halo / 2
+            val y = size.height - halo / 2 - stroke / 2
+            val lines = listOf(
+                Offset(left, y) to Offset(right, y),
+                Offset(left, top) to Offset(left, y),
+                Offset(right, top) to Offset(right, y),
+            )
+            lines.forEach { (a, b) -> drawLine(Color.White, a, b, stroke + halo, cap = StrokeCap.Round) }
+            lines.forEach { (a, b) -> drawLine(SCALE_INK, a, b, stroke, cap = StrokeCap.Square) }
         }
     }
 }
+
+/** The scale's ink and the width of its white edge. */
+private val SCALE_INK = Color(0xFF1B2A38)
+private val SCALE_HALO = 3.dp
 
 @Composable
 private fun MoreButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
