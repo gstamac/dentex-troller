@@ -101,15 +101,24 @@ internal class MotorControls(
  * always there; anchor is disabled in anchor mode and before the motor answers. Navigate goes to
  * [navigate]: the selection on the chart, or the rest of a go-to that anchoring interrupted. It is
  * disabled while the motor navigates, while there is nowhere to go or the boat cannot be moved.
+ *
+ * With [spread] the two groups sit at the two ends of the full width (portrait); without it they
+ * sit next to each other (landscape, where the info sheet takes the rest of the bottom edge).
  */
 @Composable
-internal fun MotorControlBar(controls: MotorControls, navigate: GoToRequest?, onNavigate: (GoToRequest) -> Unit) {
+internal fun MotorControlBar(
+    controls: MotorControls,
+    navigate: GoToRequest?,
+    onNavigate: (GoToRequest) -> Unit,
+    modifier: Modifier = Modifier,
+    spread: Boolean = true,
+) {
     val set = controls.set
     val speed = set == ControlSet.MANUAL || set == ControlSet.NAVIGATION || set == ControlSet.OTHER
     val steering = set == ControlSet.MANUAL
     Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
+        modifier = if (spread) modifier.fillMaxWidth() else modifier,
+        horizontalArrangement = if (spread) Arrangement.SpaceBetween else Arrangement.spacedBy(GROUP_GAP),
         verticalAlignment = Alignment.Bottom,
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -222,6 +231,7 @@ private fun RoundButton(
 
 private val SMALL = 50.dp
 private val LARGE = 58.dp
+private val GROUP_GAP = 20.dp
 private val CONTROL_FILL = Color.White
 private val CONTROL_INK = Color(0xFF1B2A38)
 private val STOP_RED = Color(0xFFC8102E)

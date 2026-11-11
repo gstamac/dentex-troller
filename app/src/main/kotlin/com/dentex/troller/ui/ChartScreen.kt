@@ -23,6 +23,7 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.fillMaxSize
@@ -75,6 +76,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
@@ -902,11 +904,8 @@ private fun ChartView(
             }
         }
 
-        Column(modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth()) {
-        Column(
-            modifier = Modifier.fillMaxWidth().padding(8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
+        // The follow-boat button and the scale line, at the right just above the bottom panels.
+        val mapAids: @Composable ColumnScope.() -> Unit = {
             if (hasPosition && !follow) {
                 FollowBoatButton(
                     onClick = { follow = true },
@@ -914,20 +913,8 @@ private fun ChartView(
                 )
             }
             metersPerPixel?.let { ScaleLine(it, zoom = mapZoom, modifier = Modifier.align(Alignment.End)) }
-            // The motor controls sit just above the info sheet.
-            if (!routeMode && motor != null) {
-                MotorControlBar(controls = motor, navigate = navigateTo, onNavigate = startGoTo)
-            }
-            if (routeMode) {
-                RoutePanel(
-                    routes = routes,
-                    selectedWaypoint = shownWaypoint,
-                    actions = routeActions,
-                )
-            }
         }
-        // The info sheet runs along the bottom edge, outside the padding of the panels above.
-        if (!routeMode) {
+        val infoSheet: @Composable () -> Unit = {
             val info = tapped?.takeIf { it.routeId == null || infoRoute != null } ?: boatInfo(position, telemetry)
             InfoSheet(
                 info = info,
@@ -937,6 +924,56 @@ private fun ChartView(
                 onDeletePin = { confirmDeletePin = it },
             )
         }
+        val landscape = LocalConfiguration.current.let { it.screenWidthDp > it.screenHeightDp }
+
+        if (landscape && !routeMode) {
+            // Landscape: the motor controls at the bottom left, side by side, and the info sheet
+            // along the bottom edge to their right. It is drawn over the buttons on the right, so
+            // pulled up it may cover them; the controls (and STOP) stay clear of it.
+            Row(
+                modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth(),
+                verticalAlignment = Alignment.Bottom,
+            ) {
+                if (motor != null) {
+                    MotorControlBar(
+                        controls = motor,
+                        navigate = navigateTo,
+                        onNavigate = startGoTo,
+                        spread = false,
+                        modifier = Modifier.padding(8.dp),
+                    )
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth().padding(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        content = mapAids,
+                    )
+                    infoSheet()
+                }
+            }
+        } else {
+            Column(modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth()) {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    mapAids()
+                    // The motor controls sit just above the info sheet.
+                    if (!routeMode && motor != null) {
+                        MotorControlBar(controls = motor, navigate = navigateTo, onNavigate = startGoTo)
+                    }
+                    if (routeMode) {
+                        RoutePanel(
+                            routes = routes,
+                            selectedWaypoint = shownWaypoint,
+                            actions = routeActions,
+                        )
+                    }
+                }
+                // The info sheet runs along the bottom edge, outside the padding of the panels above.
+                if (!routeMode) infoSheet()
+            }
         }
     }
 

@@ -27,6 +27,9 @@ These preferences come from the owner's requests on 2026-11-06:
 - The Route screen was removed on 2026-11-06, because routes are edited on the map. The owner doesn't want route upload or download back: following a route uploads it.
 - Follow route starts at the tapped waypoint, or at the first point of a tapped section. The owner rejected distance-based joining twice, so don't bring it back.
 
+- Landscape (owner's design, 2026-11-11): motor controls bottom left, both groups side by side;
+  the info sheet along the bottom to their right, allowed to cover the right-hand buttons when
+  pulled up. Portrait and route mode keep the full-width layout.
 - App icon: the owner tried docs/icon2.png as the launcher icon on 2026-11-10 and had it reverted;
   keep the current launcher icon unless asked.
 
