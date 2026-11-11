@@ -33,5 +33,3 @@ These preferences come from the owner's requests on 2026-11-06:
 **Why:** the owner uses it one-handed on a boat. Controls that move or vanish between modes, and popups, get in the way.
 
 **How to apply:** for new chart controls, use icons, keep the button positions fixed, disable rather than hide, and add no confirmation steps. The STOP-always rule from CLAUDE.md still applies: the stop is never disabled.
-- App icon: the owner tried docs/icon2.png as the launcher icon on 2026-11-10 and had it reverted;
-  keep the current launcher icon unless asked.

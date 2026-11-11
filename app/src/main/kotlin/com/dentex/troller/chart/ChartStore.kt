@@ -13,7 +13,7 @@ import java.io.IOException
  * The charts are too large to ship inside the APK, and MapLibre reads PMTiles only from a real
  * file, so they live in the app-specific external storage,
  * `Android/data/com.dentex.troller/files/charts/`. They get there either with `adb push` or by
- * importing them from the phone's storage in the chart screen.
+ * importing them from the phone's storage (Settings, Charts, or the chart screen while none is installed).
  */
 class ChartStore(private val context: Context) {
 

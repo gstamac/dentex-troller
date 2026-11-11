@@ -1,5 +1,7 @@
 package com.dentex.troller.ui
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -22,7 +24,12 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.dentex.troller.MainViewModel
 import com.dentex.troller.ble.ConnectionState
+import com.dentex.troller.chart.ChartKind
+import com.dentex.troller.chart.ChartStore
 import com.dentex.troller.chart.ChartStyle
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import kotlin.math.roundToInt
 
 /** Metres per second at one knot. */
@@ -41,6 +48,11 @@ fun SettingsScreen(viewModel: MainViewModel, onChangeRemote: () -> Unit) {
     val radius by viewModel.nearSeamarkRadius.collectAsStateWithLifecycle()
     val remote by viewModel.savedRemote.collectAsStateWithLifecycle()
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val depths by viewModel.chartFile.collectAsStateWithLifecycle()
+    val rainbow by viewModel.rainbowFile.collectAsStateWithLifecycle()
+    val chartImporter = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri?.let(viewModel::importChart)
+    }
 
     Column(
         modifier = Modifier
@@ -70,6 +82,20 @@ fun SettingsScreen(viewModel: MainViewModel, onChangeRemote: () -> Unit) {
                 Text(if (remote == null) "Connect" else "Change")
             }
         }
+        SectionHeader("Charts")
+        ChartRow(ChartKind.DEPTHS, depths)
+        ChartRow(ChartKind.RAINBOW, rainbow)
+        Text(
+            "Pick a .pmtiles file, for example from Download. The app reads which chart it is and " +
+                "replaces the installed one; a file that is not a chart leaves it as it was.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 4.dp, bottom = 8.dp),
+        )
+        OutlinedButton(
+            onClick = { chartImporter.launch(arrayOf("*/*")) },
+            modifier = Modifier.padding(bottom = 16.dp),
+        ) { Text("Import chart file…") }
         SectionHeader("Seamarks near the boat")
         Text(
             "With Seamarks off in the chart's layers menu, rocks, wrecks, obstructions, buoys and " +
@@ -104,5 +130,21 @@ fun SettingsScreen(viewModel: MainViewModel, onChangeRemote: () -> Unit) {
                 }
             }
         }
+    }
+}
+
+/** One chart file: its name, and its size and date or that it is missing. */
+@Composable
+private fun ChartRow(kind: ChartKind, installed: ChartStore.InstalledChart?) {
+    Column(modifier = Modifier.padding(bottom = 8.dp)) {
+        Text(kind.title, style = MaterialTheme.typography.bodyLarge)
+        Text(
+            installed?.let {
+                val date = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).format(Date(it.modifiedMillis))
+                String.format(Locale.US, "%.1f MB  ·  %s", it.bytes / 1_048_576.0, date)
+            } ?: "Not installed",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }

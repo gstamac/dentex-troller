@@ -12,4 +12,5 @@
 - [Other motor brands research](other-motor-brands-research.md): Minn Kota BT i-Pilot Link most feasible, QUEST riskier, MotorGuide needs N2K hardware; nothing started
 - [Track recording decisions](track-recording-decisions.md): yellow 2.5 px line; ignore impossible jumps, join sim jumps, no break when still; background recording via TrackService since 2026-11-10, untested on the water
 - [Soundings charts](soundings-charts.md): CSV soundings tools; rainbow stays from soundings; shading interpolated since 2026-11-08; still open: no-depth colour, shades past 30 m
+- [Test devices](test-devices.md): Xiaomi phone (Android 16) and iPlay 40H tablet (Android 11); on the tablet push charts to Download and import in the app
 - [OSM land download](osm-land-download.md): osmdata.openstreetmap.de down 2026-11-06/07; LAND fallback covers only the test area
