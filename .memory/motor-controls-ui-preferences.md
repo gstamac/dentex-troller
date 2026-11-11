@@ -13,7 +13,12 @@ These preferences come from the owner's requests on 2026-11-06:
 - A go-to starts as soon as navigate is pressed. There is no confirmation dialog and no go-to info panel. A failure is shown in a snackbar.
 - There are no "Move boat here" or "Follow route" buttons in the info sheet. The navigate button takes the selection, or continues a go-to that anchoring interrupted.
 - The selection (pin, route) must survive starting, stopping and anchoring a go-to.
-- The top-right badge only shows status and doesn't stop the motor. Manual is drawn as a propeller.
+- The status badge only shows status and doesn't stop the motor. Manual is drawn as a propeller.
+  It sits at the top left (owner, 2026-11-11).
+- Map credits (owner chose 2026-11-11): shown at the top right, left of the buttons, for 6 s when
+  the app starts, then faded; the full credits and the not-for-navigation note are in Settings,
+  About. OSMF's guidelines want the OSM credit visible without interaction at least for a while,
+  so don't move it to About only.
 - The chart screen has no bottom menu. A three-dot button under the track button opens Settings, the first tab (2026-11-09). The other screens keep the bottom menu, but without a Chart entry (removed
   2026-11-09). They slide in over the chart from the right, like Google Maps settings, and an X at
   the top right (or Back) slides them away (an X, not a back arrow: Google Maps settings use an X too, owner 2026-11-10); the chart stays alive underneath.

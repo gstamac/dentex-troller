@@ -22,6 +22,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.dentex.troller.BuildConfig
 import com.dentex.troller.MainViewModel
 import com.dentex.troller.ble.ConnectionState
 import com.dentex.troller.chart.ChartKind
@@ -130,8 +131,38 @@ fun SettingsScreen(viewModel: MainViewModel, onChangeRemote: () -> Unit) {
                 }
             }
         }
+        SectionHeader("About")
+        Text(
+            "Dentex Troller ${BuildConfig.VERSION_NAME}" + if (BuildConfig.SIMULATOR) " (simulator)" else "",
+            style = MaterialTheme.typography.bodyLarge,
+            modifier = Modifier.padding(bottom = 8.dp),
+        )
+        CREDITS.forEach { (title, text) ->
+            Column(modifier = Modifier.padding(bottom = 8.dp)) {
+                Text(title, style = MaterialTheme.typography.bodyMedium)
+                Text(
+                    text,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        Text(
+            "The chart is not for navigation. Its depths come from a grid of about 115 m, so rocks " +
+                "and shallows near the shore can be missing; keep a lookout.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.error,
+            modifier = Modifier.padding(top = 4.dp),
+        )
     }
 }
+
+/** What the chart is made from, and the credit and licence each source asks for. */
+private val CREDITS = listOf(
+    "Depths" to "EMODnet Bathymetry Consortium, EMODnet Digital Bathymetry (DTM 2024). CC BY 4.0.",
+    "Land and shoreline" to "© OpenStreetMap contributors. ODbL.",
+    "Seamarks" to "OpenSeaMap, © OpenStreetMap contributors. ODbL.",
+)
 
 /** One chart file: its name, and its size and date or that it is missing. */
 @Composable

@@ -57,6 +57,9 @@ import androidx.compose.ui.unit.IntOffset
 import kotlin.math.roundToInt
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeOut
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -77,6 +80,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
@@ -254,7 +258,7 @@ fun ChartScreen(viewModel: MainViewModel, onOpenConnect: () -> Unit, onOpenMenu:
         ),
         // The motor controls show whenever the link can carry a command: the transport only takes
         // writes once it is ready. Until the motor answers they offer only Stop, which is the
-        // chart's emergency stop, as the status badge at the top right does not stop the motor.
+        // chart's emergency stop, as the status badge at the top left does not stop the motor.
         motor = ControlSet.of(
             mode = state.telemetry.reportedMode,
             goToActive = goToState.active,
@@ -825,21 +829,39 @@ private fun ChartView(
             }
         }
 
-        Column(
-            modifier = Modifier.align(Alignment.TopStart).padding(8.dp).widthIn(max = 230.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
+        // The map credits show for a while when the app starts, then fade; Settings, About keeps
+        // them. They sit left of the buttons, so nothing moves when they go.
+        var showCredits by rememberSaveable { mutableStateOf(true) }
+        LaunchedEffect(Unit) {
+            delay(CREDITS_MILLIS)
+            showCredits = false
+        }
+        AnimatedVisibility(
+            visible = showCredits,
+            exit = fadeOut(tween(durationMillis = 800)),
+            modifier = Modifier.align(Alignment.TopEnd).padding(top = 8.dp, end = 64.dp),
         ) {
             Surface(
                 color = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
                 shape = MaterialTheme.shapes.small,
+                modifier = Modifier.widthIn(max = 230.dp),
             ) {
                 Text(
-                    text = "EMODnet Bathymetry · © OpenStreetMap, OpenSeaMap",
+                    text = MAP_CREDITS,
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.End,
                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                 )
             }
+        }
+
+        // Top left: the motor's status, which opens the connect popup.
+        Column(
+            modifier = Modifier.align(Alignment.TopStart).padding(8.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            MotorStatusBadge(status = status, onClick = onOpenConnect)
             // The sim build's motor is simulated; this must never be mistaken for a real session.
             if (BuildConfig.SIMULATOR) {
                 Surface(color = MaterialTheme.colorScheme.tertiary, shape = MaterialTheme.shapes.small) {
@@ -858,7 +880,6 @@ private fun ChartView(
             horizontalAlignment = Alignment.End,
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            MotorStatusBadge(status = status, onClick = onOpenConnect)
             LayersMenu(
                 layer = layer,
                 installed = { it.needs == null || it.needs in installedKinds },
@@ -1414,6 +1435,12 @@ private const val FOLLOW_ZOOM = 13.0
 private const val ROUTE_FIT_MAX_ZOOM = 17.0
 /** The trash button by a selected waypoint, up and to the right of it, clear of the finger. */
 private val WAYPOINT_DELETE_SIZE = 40.dp
+
+/** The credit line shown over the chart at start; the full credits are in Settings, About. */
+private const val MAP_CREDITS = "EMODnet Bathymetry · © OpenStreetMap contributors, OpenSeaMap"
+
+/** How long the credits stay on the chart after the app starts. */
+private const val CREDITS_MILLIS = 6_000L
 private val WAYPOINT_DELETE_GAP = 10.dp
 private const val START_LATITUDE = 43.6
 private const val START_LONGITUDE = 15.6

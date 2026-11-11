@@ -27,7 +27,7 @@ import androidx.compose.ui.unit.dp
 import com.dentex.troller.haswing.MotorTelemetry
 import com.dentex.troller.haswing.ReportedMode
 
-/** What the status badge at the top right of the chart shows. */
+/** What the status badge at the top left of the chart shows. */
 internal sealed interface MotorStatus {
     /** No Bluetooth link to the remote; [connecting] while one is being made. */
     data class Disconnected(val connecting: Boolean) : MotorStatus
@@ -62,7 +62,7 @@ internal enum class MotorRunState(val color: Color, val label: String) {
 }
 
 /**
- * The motor status at the top right of the chart: the link, and once the motor answers its state
+ * The motor status at the top left of the chart: the link, and once the motor answers its state
  * and its speed as a ring of [SPEED_STEPS] dashes. It only shows the status; tapping it opens the
  * connect screen. Stop is on the motor control bar.
  */
