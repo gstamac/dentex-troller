@@ -205,17 +205,24 @@ done
 seamarks.py "$WORK/seamark.geojsons" "$WORK"/seamarks_*.geojsons
 
 echo "== tiles"
+# With the 1 m bands, tippecanoe's polygon cleaning (wagyu) failed on the full Adriatic with
+# "Could not properly place hole to a parent" (2026-11-13), even on repaired polygons, as long as
+# --detect-shared-borders was on. So the bands are repaired first and tiled without it.
+ogr2ogr -f GeoJSONSeq -makevalid -explodecollections -nlt POLYGON \
+    "$WORK/depth_area_valid.geojsons" "$WORK/depth_area.geojsons"
 # Contour lines appear by zoom as CONTOUR_FILTER says. -r1 keeps every seamark from the zoom its
-# feature asks for, instead of thinning points at low zooms.
-tippecanoe -q -o "$OUT/adriatic.pmtiles" --force -Z5 -z14 -r1 \
+# feature asks for, instead of thinning points at low zooms. The tiles go to a temporary file, so
+# a failed run keeps the chart built before.
+tippecanoe -q -o "$WORK/adriatic.pmtiles" --force -Z5 -z14 -r1 \
     --name "Adriatic depths" \
     --attribution "$ATTRIBUTION" \
-    --detect-shared-borders --coalesce-densest-as-needed --extend-zooms-if-still-dropping \
+    --coalesce-densest-as-needed --extend-zooms-if-still-dropping \
     -j "$CONTOUR_FILTER" \
     -L "land:$WORK/land.geojsons" \
-    -L "depth_area:$WORK/depth_area.geojsons" \
+    -L "depth_area:$WORK/depth_area_valid.geojsons" \
     -L "depth_contour:$WORK/depth_contour.geojsons" \
     -L "seamark:$WORK/seamark.geojsons"
+mv "$WORK/adriatic.pmtiles" "$OUT/adriatic.pmtiles"
 
 ls -l "$OUT/adriatic.pmtiles"
 fi
